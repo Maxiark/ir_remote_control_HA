@@ -1,0 +1,6 @@
+{
+  "name": "IR Remote",
+  "render_readme": true,
+  "domains": ["ir_remote"],
+  "homeassistant": "2023.9.0"
+}
