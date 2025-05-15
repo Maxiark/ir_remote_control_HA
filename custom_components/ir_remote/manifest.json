@@ -1,11 +1,13 @@
 {
     "domain": "ir_remote",
     "name": "IR Remote",
+    "version": "1.0.2",
     "config_flow": true,
-    "dependencies": ["zha", "zha_toolkit"],
     "documentation": "https://github.com/Maxiark/ir_remote_control_HA",
-    "integration_type": "device",
-    "iot_class": "local_push",
+    "issue_tracker": "https://github.com/Maxiark/ir_remote_control_HA/issues",
     "requirements": ["aiofiles"],
-    "version": "1.0.2"
+    "dependencies": ["zha", "zha_toolkit"],
+    "codeowners": ["@Maxiark"],
+    "iot_class": "local_push",
+    "integration_type": "device"
 }
