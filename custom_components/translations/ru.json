@@ -1,0 +1,97 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Настройка ИК пульта",
+                "description": "Выберите ваше устройство ИК пульта из ZHA",
+                "data": {
+                    "ieee": "ZHA Устройство",
+                    "endpoint_id": "Endpoint ID",
+                    "cluster_id": "Cluster ID"
+                }
+            },
+            "clusters": {
+                "title": "Конфигурация ИК пульта",
+                "description": "Настройте параметры endpoint и cluster",
+                "data": {
+                    "endpoint_id": "Endpoint ID",
+                    "cluster_id": "Cluster ID"
+                }
+            }
+        },
+        "error": {
+            "device_not_found": "Выбранное устройство не найдено в ZHA",
+            "zha_not_found": "Интеграция ZHA не найдена"
+        },
+        "abort": {
+            "single_instance_allowed": "Допускается только один экземпляр"
+        }
+    },
+    "entity": {
+        "select": {
+            "learn_device": {
+                "name": "Устройство для обучения",
+                "state": {
+                    "none": "Выберите устройство"
+                }
+            },
+            "send_device": {
+                "name": "Устройство для отправки",
+                "state": {
+                    "none": "Выберите устройство"
+                }
+            },
+            "send_command": {
+                "name": "Команда",
+                "state": {
+                    "none": "Выберите команду"
+                }
+            }
+        },
+        "text": {
+            "button_name": {
+                "name": "Название кнопки"
+            },
+            "new_device_name": {
+                "name": "Название нового устройства"
+            }
+        },
+        "button": {
+            "learn_button": {
+                "name": "Начать обучение"
+            },
+            "send_button": {
+                "name": "Отправить команду"
+            },
+            "add_device_button": {
+                "name": "Добавить устройство"
+            }
+        }
+    },
+    "services": {
+        "learn_code": {
+            "name": "Обучение ИК коду",
+            "description": "Перевести ИК пульт в режим обучения и сохранить код",
+            "fields": {
+                "device": {
+                    "name": "Устройство",
+                    "description": "Название устройства"
+                },
+                "button": {
+                    "name": "Кнопка",
+                    "description": "Название кнопки"
+                }
+            }
+        },
+        "send_code": {
+            "name": "Отправить ИК код",
+            "description": "Отправить ИК код вручную",
+            "fields": {
+                "code": {
+                    "name": "Код",
+                    "description": "ИК код для отправки"
+                }
+            }
+        }
+    }
+}

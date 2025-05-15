@@ -1,0 +1,12 @@
+{
+    "domain": "ir_remote",
+    "name": "IR Remote",
+    "version": "1.0.0",
+    "config_flow": true,
+    "documentation": "https://github.com/user/ir_remote",
+    "requirements": ["aiofiles"],
+    "dependencies": ["zha"],
+    "codeowners": [],
+    "iot_class": "local_push",
+    "integration_type": "device"
+}

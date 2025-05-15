@@ -1,0 +1,97 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "IR Remote Setup",
+                "description": "Select your IR Remote device from ZHA",
+                "data": {
+                    "ieee": "ZHA Device",
+                    "endpoint_id": "Endpoint ID",
+                    "cluster_id": "Cluster ID"
+                }
+            },
+            "clusters": {
+                "title": "IR Remote Configuration",
+                "description": "Configure endpoint and cluster IDs",
+                "data": {
+                    "endpoint_id": "Endpoint ID",
+                    "cluster_id": "Cluster ID"
+                }
+            }
+        },
+        "error": {
+            "device_not_found": "Selected device not found in ZHA",
+            "zha_not_found": "ZHA integration not found"
+        },
+        "abort": {
+            "single_instance_allowed": "Only a single instance is allowed"
+        }
+    },
+    "entity": {
+        "select": {
+            "learn_device": {
+                "name": "Learning Device",
+                "state": {
+                    "none": "Choose device"
+                }
+            },
+            "send_device": {
+                "name": "Send Device",
+                "state": {
+                    "none": "Choose device"
+                }
+            },
+            "send_command": {
+                "name": "Command",
+                "state": {
+                    "none": "Choose command"
+                }
+            }
+        },
+        "text": {
+            "button_name": {
+                "name": "Button Name"
+            },
+            "new_device_name": {
+                "name": "New Device Name"
+            }
+        },
+        "button": {
+            "learn_button": {
+                "name": "Start Learning"
+            },
+            "send_button": {
+                "name": "Send Command"
+            },
+            "add_device_button": {
+                "name": "Add Device"
+            }
+        }
+    },
+    "services": {
+        "learn_code": {
+            "name": "Learn IR Code",
+            "description": "Put IR Remote in learning mode and save code",
+            "fields": {
+                "device": {
+                    "name": "Device",
+                    "description": "Device name"
+                },
+                "button": {
+                    "name": "Button",
+                    "description": "Button name"
+                }
+            }
+        },
+        "send_code": {
+            "name": "Send IR Code",
+            "description": "Send IR code manually",
+            "fields": {
+                "code": {
+                    "name": "Code",
+                    "description": "IR code to send"
+                }
+            }
+        }
+    }
+}
