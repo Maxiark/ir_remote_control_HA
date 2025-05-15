@@ -7,5 +7,5 @@
     "integration_type": "device",
     "iot_class": "local_push",
     "requirements": ["aiofiles"],
-    "version": "1.0.1"
+    "version": "1.0.2"
 }

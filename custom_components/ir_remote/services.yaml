@@ -1,3 +1,7 @@
+get_data:
+  name: Получить данные
+  description: "Получить данные об устройствах и командах ИК-пульта"
+
 learn_code:
   name: Обучение ИК-коду
   description: "Перевести ИК-пульт в режим обучения и сохранить код"
@@ -7,12 +11,7 @@ learn_code:
       description: Имя устройства
       required: true
       selector:
-        entity:
-          domain: select
-          integration: ir_remote
-          multiple: false
-          filter:
-            - entity_id: select.ir_remote_*_learn_device
+        text:
     button:
       name: Кнопка
       description: Имя кнопки
@@ -40,20 +39,21 @@ send_command:
       description: Имя устройства
       required: true
       selector:
-        entity:
-          domain: select
-          integration: ir_remote
-          multiple: false
-          filter:
-            - entity_id: select.ir_remote_*_send_device
+        text:
     command:
       name: Команда
       description: Команда для отправки
       required: true
       selector:
-        entity:
-          domain: select
-          integration: ir_remote
-          multiple: false
-          filter:
-            - entity_id: select.ir_remote_*_command_selector
+        text:
+
+add_device:
+  name: Добавить устройство
+  description: "Добавить новое устройство в список устройств ИК-пульта"
+  fields:
+    name:
+      name: Имя устройства
+      description: Имя нового устройства
+      required: true
+      selector:
+        text:
