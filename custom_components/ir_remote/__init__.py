@@ -176,6 +176,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         send_ir_code,
         schema=SEND_CODE_SCHEMA
     )
+
+    # Регистрация сервиса для отправки команд
+    hass.services.async_register(
+        DOMAIN,
+        "send_command", 
+        send_command,
+        schema=SEND_COMMAND_SCHEMA
+    )
     
     _LOGGER.debug("Registered services: %s.%s, %s.%s",
                 DOMAIN, SERVICE_LEARN_CODE, DOMAIN, SERVICE_SEND_CODE)
@@ -237,3 +245,65 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     
     return unload_ok
+
+
+SEND_COMMAND_SCHEMA = vol.Schema({
+    vol.Required("device"): cv.entity_id,
+    vol.Required("command"): cv.entity_id,
+})
+
+async def send_command(call: ServiceCall) -> None:
+    """Сервис для отправки команд по имени устройства и команды."""
+    # Получаем имя устройства из селектора
+    device_entity_id = call.data.get("device")
+    command_entity_id = call.data.get("command")
+    
+    device = "none"
+    command = "none"
+    
+    # Получаем выбранные значения из селекторов
+    device_state = hass.states.get(device_entity_id)
+    if device_state:
+        device = device_state.state
+    
+    command_state = hass.states.get(command_entity_id)
+    if command_state:
+        command = command_state.state
+    
+    _LOGGER.debug("Отправка команды для устройства '%s', команда '%s'", device, command)
+    
+    if device == "none" or command == "none":
+        _LOGGER.error("Не выбрано устройство или команда")
+        return
+    
+    # Получаем код из ir_codes.json
+    scripts_dir = Path(__file__).parent / "scripts"
+    ir_codes_path = scripts_dir / "ir_codes.json"
+    
+    try:
+        if await hass.async_add_executor_job(lambda: ir_codes_path.exists()):
+            async with aiofiles.open(ir_codes_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                codes = json.loads(content)
+                
+                if device in codes and command in codes[device]:
+                    code = codes[device][command].get("code")
+                    
+                    if code:
+                        # Отправляем код через существующий сервис
+                        await hass.services.async_call(
+                            DOMAIN,
+                            "send_code",
+                            {
+                                ATTR_CODE: code,
+                            }
+                        )
+                        return
+                
+                _LOGGER.error("ИК-код не найден для %s - %s", device, command)
+        else:
+            _LOGGER.error("Файл IR-кодов не найден: %s", ir_codes_path)
+            
+    except Exception as e:
+        _LOGGER.error("Ошибка при отправке команды: %s", e, exc_info=True)
+        raise HomeAssistantError(f"Не удалось отправить команду: {e}") from e

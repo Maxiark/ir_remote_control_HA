@@ -1,0 +1,59 @@
+learn_code:
+  name: Обучение ИК-коду
+  description: "Перевести ИК-пульт в режим обучения и сохранить код"
+  fields:
+    device:
+      name: Устройство
+      description: Имя устройства
+      required: true
+      selector:
+        entity:
+          domain: select
+          integration: ir_remote
+          multiple: false
+          filter:
+            - entity_id: select.ir_remote_*_learn_device
+    button:
+      name: Кнопка
+      description: Имя кнопки
+      required: true
+      selector:
+        text:
+
+send_code:
+  name: Отправить ИК-код
+  description: "Отправить ИК-код вручную"
+  fields:
+    code:
+      name: Код
+      description: ИК-код для отправки
+      required: true
+      selector:
+        text:
+
+send_command:
+  name: Отправить команду
+  description: "Отправить команду для выбранного устройства"
+  fields:
+    device:
+      name: Устройство
+      description: Имя устройства
+      required: true
+      selector:
+        entity:
+          domain: select
+          integration: ir_remote
+          multiple: false
+          filter:
+            - entity_id: select.ir_remote_*_send_device
+    command:
+      name: Команда
+      description: Команда для отправки
+      required: true
+      selector:
+        entity:
+          domain: select
+          integration: ir_remote
+          multiple: false
+          filter:
+            - entity_id: select.ir_remote_*_command_selector
