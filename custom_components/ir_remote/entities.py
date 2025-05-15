@@ -75,59 +75,115 @@ async def async_setup_entry(
 
 
 async def _update_ir_data(hass: HomeAssistant) -> dict:
-    """Update IR device and command data."""
+    """Обновление данных ИК-пульта напрямую из json-файла."""
     data = {
         "devices": ["none"],
         "commands": {},
         "codes": {}
     }
     
-    scripts_dir = Path(hass.config.path()) / "custom_components" / DOMAIN / "scripts"
-    manage_devices_path = scripts_dir / "manage_devices.py"
-    device_commands_path = scripts_dir / "device_commands.py"
+    # Путь к файлу с кодами
+    ir_codes_path = Path(__file__).parent / "scripts" / "ir_codes.json"
+    _LOGGER.debug("Путь к файлу IR-кодов: %s", ir_codes_path)
     
-    # Get device list
     try:
-        result = await hass.async_add_executor_job(
-            lambda: subprocess.run(
-                ["python3", str(manage_devices_path), "list"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-        )
-        device_list = result.stdout.strip().split(',')
-        if device_list and device_list[0] != "none" and device_list[0]:
-            data["devices"] = ["none"] + device_list
-        
-        # For each device, get commands
-        for device in data["devices"]:
-            if device == "none":
-                continue
-                
-            cmd_result = await hass.async_add_executor_job(
-                lambda: subprocess.run(
-                    ["python3", str(device_commands_path), device],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-            )
-            cmd_list = cmd_result.stdout.strip().split(',')
-            data["commands"][device] = cmd_list
-    
-        # Get IR codes from JSON file
-        ir_codes_path = scripts_dir / "ir_codes.json"
+        # Проверяем существование файла
         if await hass.async_add_executor_job(lambda: ir_codes_path.exists()):
+            # Читаем файл
             async with aiofiles.open(ir_codes_path, 'r', encoding='utf-8') as f:
                 content = await f.read()
                 codes = json.loads(content)
                 data["codes"] = codes
+                
+                # Формируем список устройств
+                device_list = sorted(list(codes.keys()))
+                if device_list:
+                    data["devices"] = ["none"] + device_list
+                    _LOGGER.debug("Устройства из ir_codes.json: %s", device_list)
+                
+                # Формируем списки команд для каждого устройства
+                for device in device_list:
+                    commands = ["none"] + list(codes[device].keys())
+                    data["commands"][device] = commands
+                    _LOGGER.debug("Команды для %s: %s", device, commands)
+        else:
+            _LOGGER.warning("Файл IR-кодов не найден: %s", ir_codes_path)
+            # Создаем пустой файл
+            await hass.async_add_executor_job(lambda: ir_codes_path.parent.mkdir(exist_ok=True))
+            async with aiofiles.open(ir_codes_path, 'w', encoding='utf-8') as f:
+                await f.write("{}")
+                
+    except json.JSONDecodeError as e:
+        _LOGGER.error("Ошибка декодирования JSON: %s", e)
     except Exception as e:
-        _LOGGER.error("Error updating IR data: %s", e)
+        _LOGGER.error("Ошибка обновления данных IR: %s", e, exc_info=True)
     
     return data
 
+async def add_device(hass: HomeAssistant, device_name: str) -> bool:
+    """Добавление нового устройства напрямую в ir_codes.json."""
+    if not device_name:
+        _LOGGER.warning("Имя устройства не может быть пустым")
+        return False
+        
+    config_path = Path(__file__).parent / "scripts" / "ir_codes.json"
+    
+    try:
+        codes = {}
+        
+        if await hass.async_add_executor_job(lambda: config_path.exists()):
+            async with aiofiles.open(config_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                codes = json.loads(content)
+        
+        if device_name in codes:
+            _LOGGER.warning(f"Устройство {device_name} уже существует")
+            return False
+            
+        codes[device_name] = {}
+        
+        async with aiofiles.open(config_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(codes, indent=2, ensure_ascii=False))
+        
+        _LOGGER.info(f"Устройство {device_name} успешно добавлено")
+        return True
+        
+    except Exception as e:
+        _LOGGER.error(f"Ошибка добавления устройства: {e}", exc_info=True)
+        return False
+    
+async def save_ir_code(hass: HomeAssistant, device: str, button: str, code: str) -> bool:
+    """Сохранение ИК-кода напрямую в ir_codes.json."""
+    config_path = Path(__file__).parent / "scripts" / "ir_codes.json"
+    
+    try:
+        codes = {}
+        
+        if await hass.async_add_executor_job(lambda: config_path.exists()):
+            async with aiofiles.open(config_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                codes = json.loads(content)
+        
+        # Создаем устройство, если его нет
+        if device not in codes:
+            codes[device] = {}
+        
+        codes[device][button] = {
+            "code": code,
+            "name": f"{device.upper()} {button.replace('_', ' ').title()}",
+            "description": f"IR code for {device} {button}"
+        }
+        
+        async with aiofiles.open(config_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(codes, indent=2, ensure_ascii=False))
+        
+        _LOGGER.info(f"Сохранен код для {device} - {button}")    
+        return True
+        
+    except Exception as e:
+        _LOGGER.error(f"Ошибка сохранения IR-кода: {e}", exc_info=True)
+        return False
+    
 
 class IRRemoteDeviceSelector(CoordinatorEntity, SelectEntity):
     """Entity for selecting IR Remote device."""
@@ -448,7 +504,7 @@ class IRRemoteSendButton(CoordinatorEntity, ButtonEntity):
 
 
 class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
-    """Button entity to add new IR device."""
+    """Кнопка для добавления нового ИК-устройства."""
 
     def __init__(
         self, 
@@ -457,7 +513,7 @@ class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
         coordinator: DataUpdateCoordinator,
         sort_order: int = 0
     ) -> None:
-        """Initialize the entity."""
+        """Инициализация сущности."""
         super().__init__(coordinator)
         self.hass = hass
         self.config_entry = config_entry
@@ -469,7 +525,7 @@ class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device info."""
+        """Информация об устройстве."""
         return DeviceInfo(
             identifiers={(DOMAIN, "ir_remote_controller")},
             name="ИК-пульт",
@@ -478,8 +534,8 @@ class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
         )
 
     async def async_press(self) -> None:
-        """Handle button press."""
-        # Find new device input
+        """Обработка нажатия кнопки."""
+        # Находим поле ввода нового устройства
         device_name = ""
         
         for entity_id, entity in self.hass.data.get("entity_components", {}).get("text", {}).entities.items():
@@ -488,32 +544,19 @@ class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
                 break
         
         if not device_name:
-            _LOGGER.warning("Cannot add device: empty name")
+            _LOGGER.warning("Невозможно добавить устройство: пустое имя")
             return
         
-        # Run script to add device
-        scripts_dir = Path(self.hass.config.path()) / "custom_components" / DOMAIN / "scripts"
-        manage_devices_path = scripts_dir / "manage_devices.py"
+        # Добавляем устройство напрямую
+        success = await add_device(self.hass, device_name)
         
-        try:
-            await self.hass.async_add_executor_job(
-                lambda: subprocess.run(
-                    ["python3", str(manage_devices_path), "add", device_name],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-            )
-            
-            # Clear input field
+        if success:
+            # Очищаем поле ввода
             for entity_id, entity in self.hass.data.get("entity_components", {}).get("text", {}).entities.items():
                 if isinstance(entity, IRRemoteNewDeviceInput):
                     await entity.async_set_value("")
             
-            # Update coordinator data
+            # Обновляем данные координатора
             await self.coordinator.async_refresh()
-            
-        except subprocess.CalledProcessError as e:
-            _LOGGER.error("Failed to add device: %s", e.stderr)
-        except Exception as e:
-            _LOGGER.error("Error adding device: %s", e)
+        else:
+            _LOGGER.error("Не удалось добавить устройство")

@@ -87,22 +87,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Register services
     async def learn_ir_code(call: ServiceCall) -> None:
-        """Service to learn IR codes."""
+        """Сервис обучения ИК-кодам."""
         device = call.data.get(ATTR_DEVICE)
         button = call.data.get(ATTR_BUTTON)
         
-        _LOGGER.debug("Learning IR code for device '%s', button '%s'", device, button)
+        _LOGGER.debug("Обучение ИК-коду для устройства '%s', кнопки '%s'", device, button)
         
         ieee = entry.data.get(CONF_IEEE)
         endpoint_id = entry.data.get(CONF_ENDPOINT)
         cluster_id = entry.data.get(CONF_CLUSTER)
         
         if not ieee or not endpoint_id or not cluster_id:
-            _LOGGER.error("Missing configuration for IR Remote")
+            _LOGGER.error("Отсутствует конфигурация для ИК-пульта")
             return
         
         try:
-            # Send ZHA command to start learning
+            # Отправляем ZHA-команду для начала обучения
             await hass.services.async_call(
                 "zha",
                 "issue_zigbee_cluster_command",
@@ -113,14 +113,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "cluster_type": DEFAULT_CLUSTER_TYPE,
                     "command": ZHA_COMMAND_LEARN,
                     "command_type": DEFAULT_COMMAND_TYPE,
-                    "params": {"on_off": True}
+                    "params": {"on_off": True, "device": device, "button": button}
                 },
                 blocking=True
             )
-            _LOGGER.debug("IR learning command sent successfully")
+            _LOGGER.debug("Команда обучения ИК-коду успешно отправлена")
+            
+            # После этого предполагается, что устройство отправит ответ с кодом
+            # Этот код нужно будет сохранить с помощью функции save_ir_code
+            
         except Exception as e:
-            _LOGGER.error("Error sending IR learning command: %s", e)
-            raise HomeAssistantError(f"Failed to send IR learning command: {e}") from e
+            _LOGGER.error("Ошибка отправки команды обучения ИК-коду: %s", e)
+            raise HomeAssistantError(f"Не удалось отправить команду обучения ИК-коду: {e}") from e
+    
     
     async def send_ir_code(call: ServiceCall) -> None:
         """Service to send IR codes."""
