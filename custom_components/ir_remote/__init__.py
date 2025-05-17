@@ -37,6 +37,12 @@ PLATFORMS = [Platform.BUTTON, Platform.SELECT, Platform.TEXT]
 
 CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 
+GET_DATA_SCHEMA = vol.Schema({})
+
+ADD_DEVICE_SCHEMA = vol.Schema({
+    vol.Required("name"): cv.string,
+})
+
 # Service schemas
 LEARN_CODE_SCHEMA = vol.Schema({
     vol.Required(ATTR_DEVICE): cv.string,
@@ -45,6 +51,12 @@ LEARN_CODE_SCHEMA = vol.Schema({
 
 SEND_CODE_SCHEMA = vol.Schema({
     vol.Required(ATTR_CODE): cv.string,
+})
+
+
+SEND_COMMAND_SCHEMA = vol.Schema({
+    vol.Required("device"): cv.string,
+    vol.Required("command"): cv.string,  # Изменили с entity_id на string для соответствия API
 })
 
 
@@ -214,20 +226,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-SEND_COMMAND_SCHEMA = vol.Schema({
-    vol.Required("device"): cv.entity_id,
-    vol.Required("command"): cv.entity_id,
-})
 
 async def send_command(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для отправки команд по имени устройства и команды."""
     device = call.data.get("device")
     command = call.data.get("command")
     
+    # Проверяем, что параметры переданы как строки, а не entity_id
     if not device or not command or device == "none" or command == "none":
         _LOGGER.error("Не указано устройство или команда")
         return
     
+    # Остальной код без изменений...
     # Получаем код из ir_codes.json
     scripts_dir = Path(__file__).parent / "scripts"
     ir_codes_path = scripts_dir / "ir_codes.json"
@@ -242,10 +252,11 @@ async def send_command(hass: HomeAssistant, call: ServiceCall) -> None:
                     code = codes[device][command].get("code")
                     
                     if code:
-                        # Отправляем ZHA-команду с IR-кодом
-                        ieee = hass.data[DOMAIN].get(CONF_IEEE)
-                        endpoint_id = hass.data[DOMAIN].get(CONF_ENDPOINT)
-                        cluster_id = hass.data[DOMAIN].get(CONF_CLUSTER)
+                        # Получаем конфигурацию из data[DOMAIN]
+                        config = hass.data[DOMAIN].get("config", {})
+                        ieee = config.get(CONF_IEEE)
+                        endpoint_id = config.get(CONF_ENDPOINT)
+                        cluster_id = config.get(CONF_CLUSTER)
                         
                         if not ieee or not endpoint_id or not cluster_id:
                             _LOGGER.error("Отсутствует конфигурация для ИК-пульта")
@@ -276,13 +287,6 @@ async def send_command(hass: HomeAssistant, call: ServiceCall) -> None:
         _LOGGER.error("Ошибка при отправке команды: %s", e, exc_info=True)
         raise HomeAssistantError(f"Не удалось отправить команду: {e}") from e
     
-    
-# Определение новых схем для сервисов:
-GET_DATA_SCHEMA = vol.Schema({})
-
-ADD_DEVICE_SCHEMA = vol.Schema({
-    vol.Required("name"): cv.string,
-})
 
 # Сервисная функция для получения данных:
 async def get_data(hass: HomeAssistant, call: ServiceCall) -> dict:

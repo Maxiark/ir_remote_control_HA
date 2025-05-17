@@ -61,7 +61,6 @@ async def get_zha_devices(hass: HomeAssistant) -> dict[str, str]:
         return {}
 
 
-@config_entries.HANDLERS.register(DOMAIN)
 class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for IR Remote."""
 
