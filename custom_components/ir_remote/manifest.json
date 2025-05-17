@@ -3,7 +3,7 @@
     "name": "IR Remote",
     "codeowners": ["@Maxiark"],
     "config_flow": true,
-    "dependencies": ["zha", "zha_toolkit"],
+    "dependencies": ["http", "zha", "zha_toolkit"],
     "documentation": "https://github.com/Maxiark/ir_remote_control_HA",
     "integration_type": "device",
     "iot_class": "local_push",
