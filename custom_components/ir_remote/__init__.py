@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 import aiofiles
 import voluptuous as vol
-from .frontend import async_setup_frontend
 
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.config_entries import ConfigEntry
@@ -23,6 +22,7 @@ from .const import (
     DEFAULT_COMMAND_TYPE,
     SERVICE_LEARN_CODE,
     SERVICE_SEND_CODE,
+    SERVICE_SEND_COMMAND,
     ATTR_DEVICE,
     ATTR_BUTTON,
     ATTR_CODE,
@@ -37,12 +37,6 @@ PLATFORMS = [Platform.BUTTON, Platform.SELECT, Platform.TEXT]
 
 CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 
-GET_DATA_SCHEMA = vol.Schema({})
-
-ADD_DEVICE_SCHEMA = vol.Schema({
-    vol.Required("name"): cv.string,
-})
-
 # Service schemas
 LEARN_CODE_SCHEMA = vol.Schema({
     vol.Required(ATTR_DEVICE): cv.string,
@@ -53,11 +47,215 @@ SEND_CODE_SCHEMA = vol.Schema({
     vol.Required(ATTR_CODE): cv.string,
 })
 
-
 SEND_COMMAND_SCHEMA = vol.Schema({
-    vol.Required("device"): cv.string,
-    vol.Required("command"): cv.string,  # Изменили с entity_id на string для соответствия API
+    vol.Required("device"): cv.string,  
+    vol.Required("command"): cv.string,
 })
+
+GET_DATA_SCHEMA = vol.Schema({})
+
+ADD_DEVICE_SCHEMA = vol.Schema({
+    vol.Required("name"): cv.string,
+})
+
+
+async def learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Сервис обучения ИК-кодам."""
+    device = call.data.get(ATTR_DEVICE)
+    button = call.data.get(ATTR_BUTTON)
+    
+    _LOGGER.debug("Обучение ИК-коду для устройства '%s', кнопки '%s'", device, button)
+    
+    # Получаем конфигурацию из data[DOMAIN]
+    config = hass.data[DOMAIN].get("config", {})
+    ieee = config.get(CONF_IEEE)
+    endpoint_id = config.get(CONF_ENDPOINT)
+    cluster_id = config.get(CONF_CLUSTER)
+    
+    if not ieee or not endpoint_id or not cluster_id:
+        _LOGGER.error("Отсутствует конфигурация для ИК-пульта")
+        return
+    
+    try:
+        # Отправляем ZHA-команду для начала обучения
+        await hass.services.async_call(
+            "zha",
+            "issue_zigbee_cluster_command",
+            {
+                "ieee": ieee,
+                "endpoint_id": endpoint_id,
+                "cluster_id": cluster_id,
+                "cluster_type": DEFAULT_CLUSTER_TYPE,
+                "command": ZHA_COMMAND_LEARN,
+                "command_type": DEFAULT_COMMAND_TYPE,
+                "params": {"on_off": True, "device": device, "button": button}
+            },
+            blocking=True
+        )
+        _LOGGER.debug("Команда обучения ИК-коду успешно отправлена")
+    except Exception as e:
+        _LOGGER.error("Ошибка отправки команды обучения ИК-коду: %s", e)
+        raise HomeAssistantError(f"Не удалось отправить команду обучения ИК-коду: {e}") from e
+
+
+async def send_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Сервис для отправки ИК-кодов."""
+    code = call.data.get(ATTR_CODE)
+    
+    _LOGGER.debug("Отправка ИК-кода: %s", code[:10] + "..." if len(code) > 10 else code)
+    
+    # Получаем конфигурацию из data[DOMAIN]
+    config = hass.data[DOMAIN].get("config", {})
+    ieee = config.get(CONF_IEEE)
+    endpoint_id = config.get(CONF_ENDPOINT)
+    cluster_id = config.get(CONF_CLUSTER)
+    
+    if not ieee or not endpoint_id or not cluster_id:
+        _LOGGER.error("Отсутствует конфигурация для ИК-пульта")
+        return
+    
+    try:
+        # Отправляем ZHA-команду с ИК-кодом
+        await hass.services.async_call(
+            "zha",
+            "issue_zigbee_cluster_command",
+            {
+                "ieee": ieee,
+                "endpoint_id": endpoint_id,
+                "cluster_id": cluster_id,
+                "cluster_type": DEFAULT_CLUSTER_TYPE,
+                "command": ZHA_COMMAND_SEND,
+                "command_type": DEFAULT_COMMAND_TYPE,
+                "params": {"code": code}
+            },
+            blocking=True
+        )
+        _LOGGER.debug("ИК-код успешно отправлен")
+    except Exception as e:
+        _LOGGER.error("Ошибка отправки ИК-кода: %s", e)
+        raise HomeAssistantError(f"Не удалось отправить ИК-код: {e}") from e
+
+
+async def send_command(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Сервис для отправки команд по имени устройства и команды."""
+    device = call.data.get("device")
+    command = call.data.get("command")
+    
+    if not device or not command or device == "none" or command == "none":
+        _LOGGER.error("Не указано устройство или команда")
+        return
+    
+    # Получаем код из ir_codes.json
+    scripts_dir = Path(__file__).parent / "scripts"
+    ir_codes_path = scripts_dir / "ir_codes.json"
+    
+    try:
+        if await hass.async_add_executor_job(lambda: ir_codes_path.exists()):
+            async with aiofiles.open(ir_codes_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                codes = json.loads(content)
+                
+                if device in codes and command in codes[device]:
+                    code = codes[device][command].get("code")
+                    
+                    if code:
+                        # Отправляем ZHA-команду с IR-кодом
+                        config = hass.data[DOMAIN].get("config", {})
+                        ieee = config.get(CONF_IEEE)
+                        endpoint_id = config.get(CONF_ENDPOINT)
+                        cluster_id = config.get(CONF_CLUSTER)
+                        
+                        if not ieee or not endpoint_id or not cluster_id:
+                            _LOGGER.error("Отсутствует конфигурация для ИК-пульта")
+                            return
+                        
+                        await hass.services.async_call(
+                            "zha",
+                            "issue_zigbee_cluster_command",
+                            {
+                                "ieee": ieee,
+                                "endpoint_id": endpoint_id,
+                                "cluster_id": cluster_id,
+                                "cluster_type": DEFAULT_CLUSTER_TYPE,
+                                "command": ZHA_COMMAND_SEND,
+                                "command_type": DEFAULT_COMMAND_TYPE,
+                                "params": {"code": code}
+                            },
+                            blocking=True
+                        )
+                        _LOGGER.debug("ИК-код для %s - %s успешно отправлен", device, command)
+                        return
+                
+                _LOGGER.error("ИК-код не найден для %s - %s", device, command)
+        else:
+            _LOGGER.error("Файл IR-кодов не найден: %s", ir_codes_path)
+            
+    except Exception as e:
+        _LOGGER.error("Ошибка при отправке команды: %s", e, exc_info=True)
+        raise HomeAssistantError(f"Не удалось отправить команду: {e}") from e
+
+
+async def get_data(hass: HomeAssistant, call: ServiceCall) -> dict:
+    """Сервис для получения данных об устройствах и командах."""
+    data = {
+        "devices": [],
+        "commands": {}
+    }
+    
+    scripts_dir = Path(__file__).parent / "scripts"
+    ir_codes_path = scripts_dir / "ir_codes.json"
+    
+    try:
+        if await hass.async_add_executor_job(lambda: ir_codes_path.exists()):
+            async with aiofiles.open(ir_codes_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                codes = json.loads(content)
+                
+                # Формируем список устройств
+                device_list = sorted(list(codes.keys()))
+                data["devices"] = device_list
+                
+                # Формируем списки команд для каждого устройства
+                for device in device_list:
+                    commands = list(codes[device].keys())
+                    data["commands"][device] = commands
+    except Exception as e:
+        _LOGGER.error("Ошибка получения данных: %s", e, exc_info=True)
+    
+    return data
+
+
+async def add_device(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Сервис для добавления нового устройства."""
+    device_name = call.data.get("name")
+    
+    if not device_name:
+        _LOGGER.error("Имя устройства не может быть пустым")
+        return
+    
+    scripts_dir = Path(__file__).parent / "scripts"
+    ir_codes_path = scripts_dir / "ir_codes.json"
+    
+    try:
+        codes = {}
+        
+        if await hass.async_add_executor_job(lambda: ir_codes_path.exists()):
+            async with aiofiles.open(ir_codes_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                codes = json.loads(content)
+        
+        if device_name in codes:
+            _LOGGER.warning(f"Устройство {device_name} уже существует")
+            return
+        
+        codes[device_name] = {}
+        
+        async with aiofiles.open(ir_codes_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(codes, indent=2, ensure_ascii=False))
+        
+        _LOGGER.info(f"Устройство {device_name} успешно добавлено")
+    except Exception as e:
+        _LOGGER.error(f"Ошибка добавления устройства: {e}", exc_info=True)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -117,10 +315,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await _register_services(hass, entry)
     
     # Настройка пользовательского интерфейса
-    frontend_setup_ok = await async_setup_frontend(hass, entry)
-    
-    if not frontend_setup_ok:
-        _LOGGER.warning("Failed to setup IR Remote frontend")
+    try:
+        from .frontend import async_setup_frontend
+        frontend_setup_ok = await async_setup_frontend(hass, entry)
+        
+        if not frontend_setup_ok:
+            _LOGGER.warning("Failed to setup IR Remote frontend")
+    except ImportError:
+        _LOGGER.warning("Frontend module not found, skipping UI setup")
     
     # Настраиваем платформы - это создаст UI автоматически
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -160,9 +362,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     return True
 
+
 async def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Регистрация сервисов IR Remote."""
-    # Регистрация обычных сервисов
+    # Регистрация сервисов
     hass.services.async_register(
         DOMAIN,
         SERVICE_LEARN_CODE,
@@ -194,7 +397,7 @@ async def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
     
     hass.services.async_register(
         DOMAIN,
-        "send_command",
+        SERVICE_SEND_COMMAND,
         send_command,
         schema=SEND_COMMAND_SCHEMA
     )
@@ -204,7 +407,7 @@ async def _register_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 DOMAIN, SERVICE_SEND_CODE,
                 DOMAIN, "get_data",
                 DOMAIN, "add_device",
-                DOMAIN, "send_command")
+                DOMAIN, SERVICE_SEND_COMMAND)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -219,134 +422,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Remove services
         hass.services.async_remove(DOMAIN, SERVICE_LEARN_CODE)
         hass.services.async_remove(DOMAIN, SERVICE_SEND_CODE)
+        hass.services.async_remove(DOMAIN, "get_data")
+        hass.services.async_remove(DOMAIN, "add_device")
+        hass.services.async_remove(DOMAIN, SERVICE_SEND_COMMAND)
         
         # Remove data
         hass.data[DOMAIN].pop(entry.entry_id, None)
     
     return unload_ok
-
-
-
-async def send_command(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Сервис для отправки команд по имени устройства и команды."""
-    device = call.data.get("device")
-    command = call.data.get("command")
-    
-    # Проверяем, что параметры переданы как строки, а не entity_id
-    if not device or not command or device == "none" or command == "none":
-        _LOGGER.error("Не указано устройство или команда")
-        return
-    
-    # Остальной код без изменений...
-    # Получаем код из ir_codes.json
-    scripts_dir = Path(__file__).parent / "scripts"
-    ir_codes_path = scripts_dir / "ir_codes.json"
-    
-    try:
-        if await hass.async_add_executor_job(lambda: ir_codes_path.exists()):
-            async with aiofiles.open(ir_codes_path, 'r', encoding='utf-8') as f:
-                content = await f.read()
-                codes = json.loads(content)
-                
-                if device in codes and command in codes[device]:
-                    code = codes[device][command].get("code")
-                    
-                    if code:
-                        # Получаем конфигурацию из data[DOMAIN]
-                        config = hass.data[DOMAIN].get("config", {})
-                        ieee = config.get(CONF_IEEE)
-                        endpoint_id = config.get(CONF_ENDPOINT)
-                        cluster_id = config.get(CONF_CLUSTER)
-                        
-                        if not ieee or not endpoint_id or not cluster_id:
-                            _LOGGER.error("Отсутствует конфигурация для ИК-пульта")
-                            return
-                        
-                        await hass.services.async_call(
-                            "zha",
-                            "issue_zigbee_cluster_command",
-                            {
-                                "ieee": ieee,
-                                "endpoint_id": endpoint_id,
-                                "cluster_id": cluster_id,
-                                "cluster_type": DEFAULT_CLUSTER_TYPE,
-                                "command": ZHA_COMMAND_SEND,
-                                "command_type": DEFAULT_COMMAND_TYPE,
-                                "params": {"code": code}
-                            },
-                            blocking=True
-                        )
-                        _LOGGER.debug("ИК-код для %s - %s успешно отправлен", device, command)
-                        return
-                
-                _LOGGER.error("ИК-код не найден для %s - %s", device, command)
-        else:
-            _LOGGER.error("Файл IR-кодов не найден: %s", ir_codes_path)
-            
-    except Exception as e:
-        _LOGGER.error("Ошибка при отправке команды: %s", e, exc_info=True)
-        raise HomeAssistantError(f"Не удалось отправить команду: {e}") from e
-    
-
-# Сервисная функция для получения данных:
-async def get_data(hass: HomeAssistant, call: ServiceCall) -> dict:
-    """Сервис для получения данных об устройствах и командах."""
-    data = {
-        "devices": [],
-        "commands": {}
-    }
-    
-    scripts_dir = Path(__file__).parent / "scripts"
-    ir_codes_path = scripts_dir / "ir_codes.json"
-    
-    try:
-        if await hass.async_add_executor_job(lambda: ir_codes_path.exists()):
-            async with aiofiles.open(ir_codes_path, 'r', encoding='utf-8') as f:
-                content = await f.read()
-                codes = json.loads(content)
-                
-                # Формируем список устройств
-                device_list = sorted(list(codes.keys()))
-                data["devices"] = device_list
-                
-                # Формируем списки команд для каждого устройства
-                for device in device_list:
-                    commands = list(codes[device].keys())
-                    data["commands"][device] = commands
-    except Exception as e:
-        _LOGGER.error("Ошибка получения данных: %s", e, exc_info=True)
-    
-    return data
-
-# Сервисная функция для добавления устройства:
-async def add_device(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Сервис для добавления нового устройства."""
-    device_name = call.data.get("name")
-    
-    if not device_name:
-        _LOGGER.error("Имя устройства не может быть пустым")
-        return
-    
-    scripts_dir = Path(__file__).parent / "scripts"
-    ir_codes_path = scripts_dir / "ir_codes.json"
-    
-    try:
-        codes = {}
-        
-        if await hass.async_add_executor_job(lambda: ir_codes_path.exists()):
-            async with aiofiles.open(ir_codes_path, 'r', encoding='utf-8') as f:
-                content = await f.read()
-                codes = json.loads(content)
-        
-        if device_name in codes:
-            _LOGGER.warning(f"Устройство {device_name} уже существует")
-            return
-        
-        codes[device_name] = {}
-        
-        async with aiofiles.open(ir_codes_path, 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(codes, indent=2, ensure_ascii=False))
-        
-        _LOGGER.info(f"Устройство {device_name} успешно добавлено")
-    except Exception as e:
-        _LOGGER.error(f"Ошибка добавления устройства: {e}", exc_info=True)
