@@ -412,15 +412,18 @@ class IRRemoteLearnButton(CoordinatorEntity, ButtonEntity):
         device = "none"
         button = ""
         
-        for entity_id, entity in self.hass.data.get("entity_components", {}).get("select", {}).entities.items():
-            if isinstance(entity, IRRemoteDeviceSelector) and entity.mode == "learn":
-                device = entity.current_option
-                break
-        
-        for entity_id, entity in self.hass.data.get("entity_components", {}).get("text", {}).entities.items():
-            if isinstance(entity, IRRemoteButtonInput):
-                button = entity.native_value
-                break
+        entity_registry = self.hass.helpers.entity_registry.async_get(self.hass)
+    
+        # Найти все нужные сущности
+        for entity_id, entity_entry in entity_registry.entities.items():
+            if entity_id.startswith("select.ir_remote_02_20_learn_device"):
+                state = self.hass.states.get(entity_id)
+                if state:
+                    device = state.state
+            elif entity_id.startswith("text.ir_remote_02_21_button_input"):
+                state = self.hass.states.get(entity_id)
+                if state:
+                    button = state.state
         
         if device == "none" or not button:
             _LOGGER.warning("Cannot learn: device=%s, button=%s", device, button)
@@ -474,12 +477,20 @@ class IRRemoteSendButton(CoordinatorEntity, ButtonEntity):
         command = "none"
         code = None
         
-        for entity_id, entity in self.hass.data.get("entity_components", {}).get("select", {}).entities.items():
-            if isinstance(entity, IRRemoteDeviceSelector) and entity.mode == "send":
-                device = entity.current_option
-            elif isinstance(entity, IRRemoteCommandSelector):
-                command = entity.current_option
-        
+        entity_registry = self.hass.helpers.entity_registry.async_get(self.hass)
+    
+        # Найти все сущности селекторов
+        for entity_id, entity_entry in entity_registry.entities.items():
+            # Проверяем, что это нужная нам сущность
+            if entity_id.startswith("select.ir_remote_01_10_send_device"):
+                # Получаем состояние сущности
+                state = self.hass.states.get(entity_id)
+                if state:
+                    device = state.state
+            elif entity_id.startswith("select.ir_remote_01_11_command_selector"):
+                state = self.hass.states.get(entity_id)
+                if state:
+                    command = state.state
         if device == "none" or command == "none" or not self.coordinator.data:
             _LOGGER.warning("Cannot send: device=%s, command=%s", device, command)
             return
@@ -538,10 +549,14 @@ class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
         # Находим поле ввода нового устройства
         device_name = ""
         
-        for entity_id, entity in self.hass.data.get("entity_components", {}).get("text", {}).entities.items():
-            if isinstance(entity, IRRemoteNewDeviceInput):
-                device_name = entity.native_value
-                break
+        entity_registry = self.hass.helpers.entity_registry.async_get(self.hass)
+    
+        # Найти сущность поля ввода
+        for entity_id, entity_entry in entity_registry.entities.items():
+            if entity_id.startswith("text.ir_remote_03_30_new_device_input"):
+                state = self.hass.states.get(entity_id)
+                if state:
+                    device_name = state.state
         
         if not device_name:
             _LOGGER.warning("Невозможно добавить устройство: пустое имя")
@@ -551,10 +566,17 @@ class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
         success = await add_device(self.hass, device_name)
         
         if success:
-            # Очищаем поле ввода
-            for entity_id, entity in self.hass.data.get("entity_components", {}).get("text", {}).entities.items():
-                if isinstance(entity, IRRemoteNewDeviceInput):
-                    await entity.async_set_value("")
+            # Очищаем поле ввода - вызываем сервис text.set_value
+            for entity_id, entity_entry in entity_registry.entities.items():
+                if entity_id.startswith("text.ir_remote_03_30_new_device_input"):
+                    await self.hass.services.async_call(
+                        "text",
+                        "set_value",
+                        {
+                            "entity_id": entity_id,
+                            "value": ""
+                        }
+                    )
             
             # Обновляем данные координатора
             await self.coordinator.async_refresh()
