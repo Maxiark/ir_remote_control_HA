@@ -1,6 +1,5 @@
 """IR Remote entities for Home Assistant."""
 import logging
-import subprocess
 import json
 import asyncio
 import aiofiles
@@ -13,10 +12,8 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
-from homeassistant.helpers import entity_registry as er
 
 from .const import (
     DOMAIN,
@@ -34,6 +31,10 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Глобальные переменные для хранения ссылок на сущности
+_DEVICE_SELECTORS = {}
+_COMMAND_SELECTORS = {}
+_TEXT_INPUTS = {}
 
 
 async def async_setup_entry(
@@ -56,22 +57,44 @@ async def async_setup_entry(
     # Initial data fetch
     await coordinator.async_refresh()
     
+    # Создаем все сущности и сохраняем ссылки
+    send_device_selector = IRRemoteDeviceSelector(hass, config_entry, coordinator, "send", sort_order=10)
+    command_selector = IRRemoteCommandSelector(hass, config_entry, coordinator, sort_order=11)
+    send_button = IRRemoteSendButton(hass, config_entry, coordinator, sort_order=12)
+    
+    learn_device_selector = IRRemoteDeviceSelector(hass, config_entry, coordinator, "learn", sort_order=20)
+    button_input = IRRemoteButtonInput(hass, config_entry, coordinator, sort_order=21)
+    learn_button = IRRemoteLearnButton(hass, config_entry, coordinator, sort_order=22)
+    
+    new_device_input = IRRemoteNewDeviceInput(hass, config_entry, coordinator, sort_order=30)
+    add_device_button = IRRemoteAddDeviceButton(hass, config_entry, coordinator, sort_order=31)
+    
+    # Сохраняем ссылки в глобальных переменных
+    _DEVICE_SELECTORS["send"] = send_device_selector
+    _DEVICE_SELECTORS["learn"] = learn_device_selector
+    _COMMAND_SELECTORS["command"] = command_selector
+    _TEXT_INPUTS["button"] = button_input
+    _TEXT_INPUTS["new_device"] = new_device_input
+    
     entities = [
         # UI Controls
-        # Группа отправки команд (1)
-        IRRemoteDeviceSelector(hass, config_entry, coordinator, "send", sort_order=10),
-        IRRemoteCommandSelector(hass, config_entry, coordinator, sort_order=11),
-        IRRemoteSendButton(hass, config_entry, coordinator, sort_order=12),
+        send_device_selector,
+        command_selector,
+        send_button,
         
-        # Группа обучения новым командам (2)
-        IRRemoteDeviceSelector(hass, config_entry, coordinator, "learn", sort_order=20),
-        IRRemoteButtonInput(hass, config_entry, coordinator, sort_order=21),
-        IRRemoteLearnButton(hass, config_entry, coordinator, sort_order=22),
+        learn_device_selector,
+        button_input,
+        learn_button,
         
-        # Группа добавления устройств (3)
-        IRRemoteNewDeviceInput(hass, config_entry, coordinator, sort_order=30),
-        IRRemoteAddDeviceButton(hass, config_entry, coordinator, sort_order=31),
+        new_device_input,
+        add_device_button,
     ]
+    
+    # Debug для проверки созданных сущностей
+    for entity in entities:
+        _LOGGER.debug("Добавление сущности: %s (unique_id: %s)", 
+                    entity.name if hasattr(entity, "name") else "Unknown", 
+                    entity.unique_id if hasattr(entity, "unique_id") else "Unknown")
     
     async_add_entities(entities)
 
@@ -94,6 +117,8 @@ async def _update_ir_data(hass: HomeAssistant) -> dict:
             # Читаем файл
             async with aiofiles.open(ir_codes_path, 'r', encoding='utf-8') as f:
                 content = await f.read()
+                _LOGGER.debug("Прочитан файл IR-кодов размером %d байт", len(content))
+                
                 codes = json.loads(content)
                 data["codes"] = codes
                 
@@ -122,12 +147,17 @@ async def _update_ir_data(hass: HomeAssistant) -> dict:
     
     return data
 
+
 async def add_device(hass: HomeAssistant, device_name: str) -> bool:
     """Добавление нового устройства напрямую в ir_codes.json."""
     if not device_name:
         _LOGGER.warning("Имя устройства не может быть пустым")
         return False
         
+    # Предварительная обработка имени устройства
+    device_name = device_name.strip()
+    _LOGGER.debug(f"Добавление устройства, имя после обработки: '{device_name}'")
+    
     config_path = Path(__file__).parent / "scripts" / "ir_codes.json"
     
     try:
@@ -144,8 +174,11 @@ async def add_device(hass: HomeAssistant, device_name: str) -> bool:
             
         codes[device_name] = {}
         
+        # Убедимся, что используется правильная кодировка
+        json_content = json.dumps(codes, indent=2, ensure_ascii=False)
+        
         async with aiofiles.open(config_path, 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(codes, indent=2, ensure_ascii=False))
+            await f.write(json_content)
         
         _LOGGER.info(f"Устройство {device_name} успешно добавлено")
         return True
@@ -153,7 +186,8 @@ async def add_device(hass: HomeAssistant, device_name: str) -> bool:
     except Exception as e:
         _LOGGER.error(f"Ошибка добавления устройства: {e}", exc_info=True)
         return False
-    
+
+
 async def save_ir_code(hass: HomeAssistant, device: str, button: str, code: str) -> bool:
     """Сохранение ИК-кода напрямую в ir_codes.json."""
     config_path = Path(__file__).parent / "scripts" / "ir_codes.json"
@@ -231,7 +265,19 @@ class IRRemoteDeviceSelector(CoordinatorEntity, SelectEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle data update."""
         if self.coordinator.data:
-            self._attr_options = self.coordinator.data.get("devices", ["none"])
+            # Подробная отладка доступных устройств
+            devices = self.coordinator.data.get("devices", ["none"])
+            _LOGGER.debug("Получены устройства из координатора: %s", devices)
+            
+            # Обновляем список опций в селекторе
+            self._attr_options = devices
+            
+            # Если текущая опция отсутствует в новом списке, сбрасываем на none
+            if self._attr_current_option not in devices:
+                _LOGGER.debug("Текущее устройство '%s' отсутствует в новом списке, сбрасываем", 
+                           self._attr_current_option)
+                self._attr_current_option = "none"
+                
             self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
@@ -242,9 +288,9 @@ class IRRemoteDeviceSelector(CoordinatorEntity, SelectEntity):
         # If in send mode, update command selector when device changes
         if self.mode == "send":
             # Find and update the command selector
-            for entity_id, entity in self.hass.data.get("entity_components", {}).get("select", {}).entities.items():
-                if isinstance(entity, IRRemoteCommandSelector):
-                    await entity.async_update_commands(option)
+            command_selector = _COMMAND_SELECTORS.get("command")
+            if command_selector:
+                await command_selector.async_update_commands(option)
 
 
 class IRRemoteCommandSelector(CoordinatorEntity, SelectEntity):
@@ -324,6 +370,7 @@ class IRRemoteButtonInput(CoordinatorEntity, TextEntity):
         self._attr_has_entity_name = True
         self._attr_translation_key = "button_name"
         self._attr_entity_category = None  # Делаем видимым в основном интерфейсе
+        self._attr_mode = "text"  # Добавлено для соответствия требованиям TextEntity
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -361,6 +408,7 @@ class IRRemoteNewDeviceInput(CoordinatorEntity, TextEntity):
         self._attr_has_entity_name = True
         self._attr_translation_key = "new_device_name"
         self._attr_entity_category = None  # Делаем видимым в основном интерфейсе
+        self._attr_mode = "text"  # Добавлено для соответствия требованиям TextEntity
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -410,28 +458,26 @@ class IRRemoteLearnButton(CoordinatorEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Handle button press."""
-        # Find device selector and button input
-        device = "none"
-        button = ""
+        _LOGGER.debug("Кнопка обучения нажата")
+        # Используем глобальные ссылки
+        device_selector = _DEVICE_SELECTORS.get("learn")
+        button_input = _TEXT_INPUTS.get("button")
         
-        entity_registry = er.async_get(self.hass)
-    
-        # Найти все нужные сущности
-        for entity_id, entity_entry in entity_registry.entities.items():
-            if entity_id.startswith("select.ir_remote_02_20_learn_device"):
-                state = self.hass.states.get(entity_id)
-                if state:
-                    device = state.state
-            elif entity_id.startswith("text.ir_remote_02_21_button_input"):
-                state = self.hass.states.get(entity_id)
-                if state:
-                    button = state.state
+        if not device_selector or not button_input:
+            _LOGGER.warning("Селектор устройства или поле ввода кнопки не найдены")
+            return
+        
+        device = device_selector.current_option
+        button = button_input.native_value
+        
+        _LOGGER.debug("Обучение: устройство=%s, кнопка=%s", device, button)
         
         if device == "none" or not button:
-            _LOGGER.warning("Cannot learn: device=%s, button=%s", device, button)
+            _LOGGER.warning("Невозможно начать обучение: device=%s, button=%s", device, button)
             return
         
         # Call learn service
+        _LOGGER.debug("Вызов сервиса обучения для %s - %s", device, button)
         await self.hass.services.async_call(
             DOMAIN,
             "learn_code",
@@ -474,46 +520,43 @@ class IRRemoteSendButton(CoordinatorEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Handle button press."""
-        # Find device and command selectors
-        device = "none"
-        command = "none"
-        code = None
+        _LOGGER.debug("Кнопка отправки команды нажата")
+        # Используем глобальные ссылки
+        device_selector = _DEVICE_SELECTORS.get("send")
+        command_selector = _COMMAND_SELECTORS.get("command")
         
-        entity_registry = er.async_get(self.hass)
-    
-        # Найти все сущности селекторов
-        for entity_id, entity_entry in entity_registry.entities.items():
-            # Проверяем, что это нужная нам сущность
-            if entity_id.startswith("select.ir_remote_01_10_send_device"):
-                # Получаем состояние сущности
-                state = self.hass.states.get(entity_id)
-                if state:
-                    device = state.state
-            elif entity_id.startswith("select.ir_remote_01_11_command_selector"):
-                state = self.hass.states.get(entity_id)
-                if state:
-                    command = state.state
+        if not device_selector or not command_selector:
+            _LOGGER.warning("Селекторы устройства или команды не найдены")
+            return
+        
+        device = device_selector.current_option
+        command = command_selector.current_option
+        
+        _LOGGER.debug("Отправка команды: устройство=%s, команда=%s", device, command)
+        
         if device == "none" or command == "none" or not self.coordinator.data:
-            _LOGGER.warning("Cannot send: device=%s, command=%s", device, command)
+            _LOGGER.warning("Невозможно отправить команду: device=%s, command=%s", device, command)
             return
         
         # Get IR code from data
         codes = self.coordinator.data.get("codes", {})
         if device in codes and command in codes[device]:
             code = codes[device][command].get("code")
-        
-        if not code:
-            _LOGGER.warning("IR code not found for %s - %s", device, command)
-            return
-        
-        # Call send service
-        await self.hass.services.async_call(
-            DOMAIN,
-            "send_code",
-            {
-                ATTR_CODE: code,
-            },
-        )
+            
+            if code:
+                # Call send service
+                _LOGGER.debug("Отправка ИК-кода для %s - %s", device, command)
+                await self.hass.services.async_call(
+                    DOMAIN,
+                    "send_code",
+                    {
+                        ATTR_CODE: code,
+                    },
+                )
+            else:
+                _LOGGER.warning("ИК-код не найден для %s - %s", device, command)
+        else:
+            _LOGGER.warning("Команда %s не найдена для устройства %s", command, device)
 
 
 class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
@@ -548,39 +591,33 @@ class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Обработка нажатия кнопки."""
-        # Находим поле ввода нового устройства
-        device_name = ""
+        _LOGGER.debug("Кнопка добавления устройства нажата")
+        # Используем глобальные ссылки
+        new_device_input = _TEXT_INPUTS.get("new_device")
         
-        entity_registry = er.async_get(self.hass)
-    
-        # Найти сущность поля ввода
-        for entity_id, entity_entry in entity_registry.entities.items():
-            if entity_id.startswith("text.ir_remote_03_30_new_device_input"):
-                state = self.hass.states.get(entity_id)
-                if state:
-                    device_name = state.state
+        if not new_device_input:
+            _LOGGER.warning("Поле ввода нового устройства не найдено")
+            return
+        
+        device_name = new_device_input.native_value
+        device_name = device_name.strip() if device_name else ""
+        
+        _LOGGER.debug("Добавление устройства: '%s', длина: %d", device_name, len(device_name))
         
         if not device_name:
             _LOGGER.warning("Невозможно добавить устройство: пустое имя")
             return
         
         # Добавляем устройство напрямую
+        _LOGGER.debug("Вызов функции add_device для '%s'", device_name)
         success = await add_device(self.hass, device_name)
         
         if success:
-            # Очищаем поле ввода - вызываем сервис text.set_value
-            for entity_id, entity_entry in entity_registry.entities.items():
-                if entity_id.startswith("text.ir_remote_03_30_new_device_input"):
-                    await self.hass.services.async_call(
-                        "text",
-                        "set_value",
-                        {
-                            "entity_id": entity_id,
-                            "value": ""
-                        }
-                    )
+            _LOGGER.debug("Устройство '%s' успешно добавлено", device_name)
+            # Очищаем поле ввода
+            await new_device_input.async_set_value("")
             
             # Обновляем данные координатора
             await self.coordinator.async_refresh()
         else:
-            _LOGGER.error("Не удалось добавить устройство")
+            _LOGGER.error("Не удалось добавить устройство '%s'", device_name)
