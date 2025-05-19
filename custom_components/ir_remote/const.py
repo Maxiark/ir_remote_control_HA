@@ -21,7 +21,9 @@ ERROR_NO_ZHA = "zha_not_found"
 # Service names
 SERVICE_LEARN_CODE = "learn_code"
 SERVICE_SEND_CODE = "send_code"
-SERVICE_SEND_COMMAND = "send_command" 
+SERVICE_SEND_COMMAND = "send_command"
+SERVICE_GET_DATA = "get_data"
+SERVICE_ADD_DEVICE = "add_device" 
 
 # Entity attributes
 ATTR_DEVICE = "device"
