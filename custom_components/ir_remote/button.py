@@ -109,10 +109,10 @@ class IRRemoteDeviceButton(ButtonEntity):
     def device_info(self) -> DeviceInfo:
         """Return device info."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self.config_entry.entry_id)},
-            name="ИК-пульт",
-            manufacturer="Home Assistant",
-            model="IR Remote Controller",
+            identifiers={(DOMAIN, self.device_name)},
+            name=self.device_name,
+            manufacturer="IR Remote",
+            model="Virtual IR Device",
         )
 
     async def async_press(self) -> None:

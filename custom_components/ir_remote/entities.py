@@ -219,7 +219,7 @@ class IRRemoteDeviceSelector(CoordinatorEntity, SelectEntity):
     def device_info(self) -> DeviceInfo:
         """Return device info."""
         return DeviceInfo(
-            identifiers={(DOMAIN, "ir_remote_controller")},
+            identifiers={(DOMAIN, self.config_entry.entry_id)},
             name="ИК-пульт",
             manufacturer="Home Assistant",
             model="IR Remote Controller",
@@ -272,7 +272,7 @@ class IRRemoteCommandSelector(CoordinatorEntity, SelectEntity):
     def device_info(self) -> DeviceInfo:
         """Return device info."""
         return DeviceInfo(
-            identifiers={(DOMAIN, "ir_remote_controller")},
+            identifiers={(DOMAIN, self.config_entry.entry_id)},
             name="ИК-пульт",
             manufacturer="Home Assistant",
             model="IR Remote Controller",
@@ -327,7 +327,7 @@ class IRRemoteButtonInput(CoordinatorEntity, TextEntity):
     def device_info(self) -> DeviceInfo:
         """Return device info."""
         return DeviceInfo(
-            identifiers={(DOMAIN, "ir_remote_controller")},
+            identifiers={(DOMAIN, self.config_entry.entry_id)},
             name="ИК-пульт",
             manufacturer="Home Assistant",
             model="IR Remote Controller",
@@ -400,7 +400,7 @@ class IRRemoteLearnButton(CoordinatorEntity, ButtonEntity):
     def device_info(self) -> DeviceInfo:
         """Return device info."""
         return DeviceInfo(
-            identifiers={(DOMAIN, "ir_remote_controller")},
+            identifiers={(DOMAIN, self.config_entry.entry_id)},
             name="ИК-пульт",
             manufacturer="Home Assistant",
             model="IR Remote Controller",
@@ -461,7 +461,7 @@ class IRRemoteSendButton(CoordinatorEntity, ButtonEntity):
     def device_info(self) -> DeviceInfo:
         """Return device info."""
         return DeviceInfo(
-            identifiers={(DOMAIN, "ir_remote_controller")},
+            identifiers={(DOMAIN, self.config_entry.entry_id)},
             name="ИК-пульт",
             manufacturer="Home Assistant",
             model="IR Remote Controller",
@@ -527,7 +527,7 @@ class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
     def device_info(self) -> DeviceInfo:
         """Информация об устройстве."""
         return DeviceInfo(
-            identifiers={(DOMAIN, "ir_remote_controller")},
+            identifiers={(DOMAIN, self.config_entry.entry_id)},
             name="ИК-пульт",
             manufacturer="Home Assistant",
             model="IR Remote Controller",
