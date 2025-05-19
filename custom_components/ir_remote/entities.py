@@ -364,7 +364,7 @@ class IRRemoteNewDeviceInput(CoordinatorEntity, TextEntity):
     def device_info(self) -> DeviceInfo:
         """Return device info."""
         return DeviceInfo(
-            identifiers={(DOMAIN, "ir_remote_controller")},
+            identifiers={(DOMAIN, self.config_entry.entry_id)},
             name="ИК-пульт",
             manufacturer="Home Assistant",
             model="IR Remote Controller",
