@@ -16,6 +16,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     DOMAIN,
@@ -32,6 +33,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
 
 
 async def async_setup_entry(
@@ -412,7 +414,7 @@ class IRRemoteLearnButton(CoordinatorEntity, ButtonEntity):
         device = "none"
         button = ""
         
-        entity_registry = self.hass.helpers.entity_registry.async_get(self.hass)
+        entity_registry = er.async_get(self.hass)
     
         # Найти все нужные сущности
         for entity_id, entity_entry in entity_registry.entities.items():
@@ -477,7 +479,7 @@ class IRRemoteSendButton(CoordinatorEntity, ButtonEntity):
         command = "none"
         code = None
         
-        entity_registry = self.hass.helpers.entity_registry.async_get(self.hass)
+        entity_registry = er.async_get(self.hass)
     
         # Найти все сущности селекторов
         for entity_id, entity_entry in entity_registry.entities.items():
@@ -549,7 +551,7 @@ class IRRemoteAddDeviceButton(CoordinatorEntity, ButtonEntity):
         # Находим поле ввода нового устройства
         device_name = ""
         
-        entity_registry = self.hass.helpers.entity_registry.async_get(self.hass)
+        entity_registry = er.async_get(self.hass)
     
         # Найти сущность поля ввода
         for entity_id, entity_entry in entity_registry.entities.items():
