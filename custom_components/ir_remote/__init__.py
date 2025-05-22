@@ -247,7 +247,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up IR Remote from a config entry."""
-    _LOGGER.debug("Setting up IR Remote entry: %s", entry.entry_id)
+    _LOGGER.debug("=== Setting up IR Remote entry ===")
+    _LOGGER.debug("Entry ID: %s", entry.entry_id)
+    _LOGGER.debug("Entry data: %s", entry.data)
     
     if "zha" not in hass.data:
         _LOGGER.error("ZHA integration not found")
@@ -257,17 +259,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = {
         "config": entry.data,
     }
+    _LOGGER.debug("Initialized domain data structure")
     
     # Регистрируем устройство пульта в реестре устройств
     await async_register_ir_remote_device(hass, entry)
     
     # Настройка хранилища данных и координатора
+    _LOGGER.debug("Setting up data coordinator...")
     coordinator = await setup_ir_data_coordinator(hass)
     hass.data[DOMAIN]["coordinator"] = coordinator
+    _LOGGER.debug("Coordinator setup completed, data: %s", coordinator.data)
     
     # Настраиваем обработчик событий для сохранения IR-кодов
     async def handle_ir_code_learned(event):
         """Обработчик события обучения IR-коду."""
+        _LOGGER.debug("IR code learned event received: %s", event.data)
         device = event.data.get("device")
         button = event.data.get("button")
         code = event.data.get("code")
@@ -294,12 +300,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     # Регистрируем обработчик события
     hass.bus.async_listen(f"{DOMAIN}_ir_code_learned", handle_ir_code_learned)
+    _LOGGER.debug("Event handler registered")
     
     # Регистрация сервисов
     await _register_services(hass)
+    _LOGGER.debug("Services registered")
     
     # Настраиваем платформы
+    _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _LOGGER.debug("Platforms setup completed")
+    
+    # Проверяем результат регистрации сущностей
+    await _debug_check_entities(hass, entry)
     
     # Логируем инструкцию для добавления карточки в Lovelace
     _LOGGER.info(
@@ -308,6 +321,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     
     return True
+
 
 
 async def _register_services(hass: HomeAssistant) -> None:
@@ -398,28 +412,33 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data.pop(DOMAIN, None)
     
     return unload_ok
-
 async def async_register_ir_remote_device(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Регистрация устройства ИК-пульта в реестре устройств."""
+    _LOGGER.debug("=== Registering IR Remote device ===")
+    
     device_registry = dr.async_get(hass)
     ieee = entry.data.get(CONF_IEEE)
+    entry_id = entry.entry_id
+    
+    _LOGGER.debug("IEEE: %s, Entry ID: %s", ieee, entry_id)
     
     # Получаем информацию об устройстве из ZHA
     zha_device_info = await get_zha_device_info(hass, ieee)
+    _LOGGER.debug("ZHA device info: %s", zha_device_info)
     
     # Регистрируем устройство
-    device_registry.async_get_or_create(
+    device = device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
-        identifiers={(DOMAIN, ieee)},
+        identifiers={(DOMAIN, entry_id)},  # Используем entry_id как основной идентификатор
         name="ИК-пульт",
-        manufacturer=zha_device_info.get("manufacturer", "Zigbee"),
-        model=zha_device_info.get("model", "IR Remote Controller"),
-        sw_version=zha_device_info.get("sw_version"),
+        manufacturer=zha_device_info.get("manufacturer", "IR Remote Integration"),
+        model=zha_device_info.get("model", "IR Controller"),
+        sw_version="1.1.0",
         hw_version=zha_device_info.get("hw_version"),
-        via_device=("zha", ieee),  # Связываем с ZHA устройством
     )
     
-    _LOGGER.debug("IR Remote device registered with IEEE: %s", ieee)
+    _LOGGER.debug("IR Remote device registered: %s", device)
+    _LOGGER.debug("Device identifiers: %s", device.identifiers)
 
 
 async def get_zha_device_info(hass: HomeAssistant, ieee: str) -> dict:
@@ -437,6 +456,7 @@ async def get_zha_device_info(hass: HomeAssistant, ieee: str) -> dict:
         if result and "devices" in result:
             for device in result["devices"]:
                 if device.get("ieee") == ieee:
+                    _LOGGER.debug("Found ZHA device info for %s: %s", ieee, device)
                     return {
                         "manufacturer": device.get("manufacturer"),
                         "model": device.get("model"),
@@ -447,3 +467,37 @@ async def get_zha_device_info(hass: HomeAssistant, ieee: str) -> dict:
         _LOGGER.warning("Could not get ZHA device info: %s", e)
     
     return {}
+
+
+async def _debug_check_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Отладочная функция для проверки созданных сущностей."""
+    _LOGGER.debug("=== Checking registered entities ===")
+    
+    entity_registry = hass.helpers.entity_registry.async_get(hass)
+    device_registry = dr.async_get(hass)
+    
+    # Проверяем устройства
+    devices = device_registry.devices.values()
+    ir_devices = [d for d in devices if entry.entry_id in [e.id for e in d.config_entries]]
+    _LOGGER.debug("Found %d devices for this integration:", len(ir_devices))
+    for device in ir_devices:
+        _LOGGER.debug("  Device: %s (identifiers: %s)", device.name, device.identifiers)
+    
+    # Проверяем сущности
+    entities = [e for e in entity_registry.entities.values() if e.config_entry_id == entry.entry_id]
+    _LOGGER.debug("Found %d entities for this integration:", len(entities))
+    
+    by_domain = {}
+    for entity in entities:
+        domain = entity.domain
+        if domain not in by_domain:
+            by_domain[domain] = []
+        by_domain[domain].append(entity)
+    
+    for domain, domain_entities in by_domain.items():
+        _LOGGER.debug("  %s domain: %d entities", domain, len(domain_entities))
+        for entity in domain_entities:
+            _LOGGER.debug("    %s: %s (unique_id: %s, device_id: %s)", 
+                         entity.entity_id, entity.original_name, entity.unique_id, entity.device_id)
+    
+    _LOGGER.debug("=== Entity check completed ===")

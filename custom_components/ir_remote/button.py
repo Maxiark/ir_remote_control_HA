@@ -1,4 +1,4 @@
-"""Button platform for IR Remote integration."""
+"""Button platform for IR Remote integration - полная исправленная версия."""
 import logging
 import json
 from pathlib import Path
@@ -21,13 +21,17 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up IR Remote buttons."""
-    _LOGGER.debug("Setting up IR Remote buttons")
+    _LOGGER.debug("=== Setting up IR Remote buttons ===")
+    _LOGGER.debug("Config entry ID: %s", config_entry.entry_id)
+    _LOGGER.debug("Config entry data: %s", config_entry.data)
 
     # Получаем координатор данных из настроек компонента
     coordinator = hass.data[DOMAIN].get("coordinator")
     if not coordinator:
         _LOGGER.error("Координатор данных не инициализирован")
         return
+    
+    _LOGGER.debug("Coordinator data: %s", coordinator.data)
     
     # Создаем основные кнопки управления
     ui_buttons = [
@@ -51,24 +55,50 @@ async def async_setup_entry(
         ),
     ]
     
+    _LOGGER.debug("Created %d UI buttons", len(ui_buttons))
+    for button in ui_buttons:
+        _LOGGER.debug("UI Button: %s (unique_id: %s)", button.name, button.unique_id)
+    
     # Создаем кнопки устройств из сохраненных кодов
     device_buttons = []
     
     # Получаем данные о кодах из координатора
     if coordinator.data and "codes" in coordinator.data:
         codes = coordinator.data["codes"]
+        _LOGGER.debug("Found codes data: %s", codes)
         
         for device_name, commands in codes.items():
+            _LOGGER.debug("Processing device: %s with commands: %s", device_name, list(commands.keys()))
             for command_name, command_data in commands.items():
-                device_buttons.append(
-                    IRRemoteDeviceButton(
-                        hass,
-                        config_entry,
-                        device_name,
-                        command_name,
-                        command_data,
-                    )
+                device_button = IRRemoteDeviceButton(
+                    hass,
+                    config_entry,
+                    device_name,
+                    command_name,
+                    command_data,
                 )
+                device_buttons.append(device_button)
+                _LOGGER.debug("Created device button: %s - %s (unique_id: %s)", 
+                             device_name, command_name, device_button.unique_id)
+    else:
+        _LOGGER.debug("No codes data found in coordinator")
+    
+    _LOGGER.debug("Created %d device buttons", len(device_buttons))
     
     # Добавляем все кнопки
-    async_add_entities(ui_buttons + device_buttons)
+    all_buttons = ui_buttons + device_buttons
+    _LOGGER.debug("Adding %d total buttons to Home Assistant", len(all_buttons))
+    
+    async_add_entities(all_buttons)
+    
+    _LOGGER.debug("=== IR Remote buttons setup completed ===")
+    
+    # Проверяем, что сущности действительно добавлены
+    entity_registry = hass.helpers.entity_registry.async_get(hass)
+    entities_count = 0
+    for entity_id, entity_entry in entity_registry.entities.items():
+        if entity_entry.config_entry_id == config_entry.entry_id and entity_entry.domain == "button":
+            entities_count += 1
+            _LOGGER.debug("Registered button entity: %s (%s)", entity_id, entity_entry.unique_id)
+    
+    _LOGGER.debug("Total button entities registered: %d", entities_count)
