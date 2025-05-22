@@ -12,6 +12,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 
 from .const import (
     DOMAIN,
@@ -257,6 +258,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "config": entry.data,
     }
     
+    # Регистрируем устройство пульта в реестре устройств
+    await async_register_ir_remote_device(hass, entry)
+    
     # Настройка хранилища данных и координатора
     coordinator = await setup_ir_data_coordinator(hass)
     hass.data[DOMAIN]["coordinator"] = coordinator
@@ -394,3 +398,52 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data.pop(DOMAIN, None)
     
     return unload_ok
+
+async def async_register_ir_remote_device(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Регистрация устройства ИК-пульта в реестре устройств."""
+    device_registry = dr.async_get(hass)
+    ieee = entry.data.get(CONF_IEEE)
+    
+    # Получаем информацию об устройстве из ZHA
+    zha_device_info = await get_zha_device_info(hass, ieee)
+    
+    # Регистрируем устройство
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, ieee)},
+        name="ИК-пульт",
+        manufacturer=zha_device_info.get("manufacturer", "Zigbee"),
+        model=zha_device_info.get("model", "IR Remote Controller"),
+        sw_version=zha_device_info.get("sw_version"),
+        hw_version=zha_device_info.get("hw_version"),
+        via_device=("zha", ieee),  # Связываем с ZHA устройством
+    )
+    
+    _LOGGER.debug("IR Remote device registered with IEEE: %s", ieee)
+
+
+async def get_zha_device_info(hass: HomeAssistant, ieee: str) -> dict:
+    """Получение информации об устройстве из ZHA."""
+    try:
+        # Пытаемся получить информацию через zha_toolkit
+        result = await hass.services.async_call(
+            "zha_toolkit",
+            "zha_devices",
+            {},
+            blocking=True,
+            return_response=True
+        )
+        
+        if result and "devices" in result:
+            for device in result["devices"]:
+                if device.get("ieee") == ieee:
+                    return {
+                        "manufacturer": device.get("manufacturer"),
+                        "model": device.get("model"),
+                        "sw_version": device.get("sw_version"),
+                        "hw_version": device.get("hw_version"),
+                    }
+    except Exception as e:
+        _LOGGER.warning("Could not get ZHA device info: %s", e)
+    
+    return {}

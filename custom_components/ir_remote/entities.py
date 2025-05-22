@@ -1,4 +1,4 @@
-"""IR Remote entities for Home Assistant."""
+"""IR Remote entities for Home Assistant - исправленная версия."""
 import logging
 from typing import Any, Optional
 
@@ -30,14 +30,22 @@ _LOGGER = logging.getLogger(__name__)
 class IRRemoteEntityBase:
     """Базовый класс для всех сущностей IR Remote."""
     
+    def __init__(self, config_entry: ConfigEntry):
+        """Инициализация базового класса."""
+        self.config_entry = config_entry
+    
     @property
     def device_info(self) -> DeviceInfo:
-        """Информация об устройстве для всех сущностей."""
+        """Информация об устройстве пульта на основе ZHA данных."""
+        ieee = self.config_entry.data.get(CONF_IEEE)
+        
         return DeviceInfo(
-            identifiers={(DOMAIN, self.config_entry.entry_id)},
+            identifiers={(DOMAIN, ieee)},  # Используем IEEE адрес как идентификатор
             name="ИК-пульт",
-            manufacturer="Home Assistant",
-            model="IR Remote Controller",
+            manufacturer="Zigbee",
+            model="IR Remote Controller", 
+            via_device=("zha", ieee),  # Связываем с ZHA устройством
+            configuration_url=None,
         )
 
 
@@ -52,14 +60,18 @@ class IRRemoteCoordinatorEntity(CoordinatorEntity, IRRemoteEntityBase):
         name: str,
     ) -> None:
         """Инициализация сущности."""
-        super().__init__(coordinator)
-        self.config_entry = config_entry
-        self._attr_unique_id = f"ir_remote_{unique_id_suffix}"
+        CoordinatorEntity.__init__(self, coordinator)
+        IRRemoteEntityBase.__init__(self, config_entry)
+        
+        ieee = config_entry.data.get(CONF_IEEE)
+        self._attr_unique_id = f"ir_remote_{ieee}_{unique_id_suffix}"
         self._attr_name = name
         self._attr_has_entity_name = True
         self._attr_entity_category = None  # Видимо в основном интерфейсе
         self._attr_should_poll = False
 
+
+# Остальные классы остаются без изменений, но теперь наследуют правильный device_info
 
 class IRRemoteDeviceSelector(IRRemoteCoordinatorEntity, SelectEntity):
     """Селектор устройств IR Remote."""
@@ -370,7 +382,7 @@ class IRRemoteAddDeviceButton(IRRemoteCoordinatorEntity, ButtonEntity):
         await self.coordinator.async_refresh()
 
 
-class IRRemoteDeviceButton(ButtonEntity, IRRemoteEntityBase):
+class IRRemoteDeviceButton(ButtonEntity):
     """Кнопка для управления ИК-устройством."""
 
     def __init__(
@@ -394,12 +406,14 @@ class IRRemoteDeviceButton(ButtonEntity, IRRemoteEntityBase):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Информация об устройстве."""
+        """Информация об управляемом устройстве (не пульте)."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self.device_name)},
-            name=self.device_name,
-            manufacturer="IR Remote",
-            model="Virtual IR Device",
+            identifiers={(DOMAIN, f"controlled_{self.device_name}")},
+            name=self.device_name.title(),
+            manufacturer="IR Controlled Device",
+            model="Virtual Device",
+            # Связываем с основным пультом
+            via_device=(DOMAIN, self.config_entry.data.get(CONF_IEEE)),
         )
 
     async def async_press(self) -> None:
