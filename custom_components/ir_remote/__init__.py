@@ -246,6 +246,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+"""Исправленные функции для __init__.py - финальная версия."""
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up IR Remote from a config entry."""
     _LOGGER.debug("=== Setting up IR Remote entry ===")
@@ -390,7 +392,7 @@ async def _debug_check_entities(hass: HomeAssistant, entry: ConfigEntry) -> None
     
     # Проверяем устройства
     devices = device_registry.devices.values()
-    ir_devices = [d for d in devices if entry.entry_id in [e.id for e in d.config_entries]]
+    ir_devices = [d for d in devices if entry.entry_id in d.config_entries]
     _LOGGER.debug("Found %d devices for this integration:", len(ir_devices))
     for device in ir_devices:
         _LOGGER.debug("  Device: %s (identifiers: %s)", device.name, device.identifiers)
