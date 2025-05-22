@@ -1,9 +1,10 @@
-"""Select platform for IR Remote integration - полная исправленная версия."""
+"""Select platform for IR Remote integration - исправленные импорты."""
 import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
 from .entities import IRRemoteDeviceSelector, IRRemoteCommandSelector
@@ -61,7 +62,7 @@ async def async_setup_entry(
     _LOGGER.debug("=== IR Remote select entities setup completed ===")
     
     # Проверяем, что сущности действительно добавлены
-    entity_registry = hass.helpers.entity_registry.async_get(hass)
+    entity_registry = er.async_get(hass)
     entities_count = 0
     for entity_id, entity_entry in entity_registry.entities.items():
         if entity_entry.config_entry_id == config_entry.entry_id and entity_entry.domain == "select":

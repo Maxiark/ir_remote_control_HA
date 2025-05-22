@@ -1,4 +1,4 @@
-"""Button platform for IR Remote integration - полная исправленная версия."""
+"""Button platform for IR Remote integration - исправленные импорты."""
 import logging
 import json
 from pathlib import Path
@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
 from .entities import IRRemoteLearnButton, IRRemoteSendButton, IRRemoteAddDeviceButton, IRRemoteDeviceButton
@@ -94,7 +95,7 @@ async def async_setup_entry(
     _LOGGER.debug("=== IR Remote buttons setup completed ===")
     
     # Проверяем, что сущности действительно добавлены
-    entity_registry = hass.helpers.entity_registry.async_get(hass)
+    entity_registry = er.async_get(hass)
     entities_count = 0
     for entity_id, entity_entry in entity_registry.entities.items():
         if entity_entry.config_entry_id == config_entry.entry_id and entity_entry.domain == "button":
