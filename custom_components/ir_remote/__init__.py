@@ -246,13 +246,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
-"""Исправленные функции для __init__.py - финальная версия."""
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up IR Remote from a config entry."""
-    _LOGGER.debug("=== Setting up IR Remote entry ===")
-    _LOGGER.debug("Entry ID: %s", entry.entry_id)
-    _LOGGER.debug("Entry data: %s", entry.data)
+    _LOGGER.info("=== Setting up IR Remote entry ===")
+    _LOGGER.info("Entry ID: %s", entry.entry_id)
     
     if "zha" not in hass.data:
         _LOGGER.error("ZHA integration not found")
@@ -262,26 +259,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = {
         "config": entry.data,
     }
-    _LOGGER.debug("Initialized domain data structure")
+    _LOGGER.info("Initialized domain data structure")
     
-    # Регистрируем устройство пульта в реестре устройств
-    await async_register_ir_remote_device(hass, entry)
+    # ВАЖНО: Сначала регистрируем устройство, потом создаем сущности
+    device = await async_register_ir_remote_device(hass, entry)  
+    _LOGGER.info("Device registered successfully: %s", device.id)
     
     # Настройка хранилища данных и координатора
-    _LOGGER.debug("Setting up data coordinator...")
+    _LOGGER.info("Setting up data coordinator...")
     coordinator = await setup_ir_data_coordinator(hass)
     hass.data[DOMAIN]["coordinator"] = coordinator
-    _LOGGER.debug("Coordinator setup completed, data: %s", coordinator.data)
+    _LOGGER.info("Coordinator setup completed")
     
     # Настраиваем обработчик событий для сохранения IR-кодов
     async def handle_ir_code_learned(event):
         """Обработчик события обучения IR-коду."""
-        _LOGGER.debug("IR code learned event received: %s", event.data)
-        device = event.data.get("device")
+        device_name = event.data.get("device")
         button = event.data.get("button")
         code = event.data.get("code")
         
-        if not device or not button or not code:
+        if not device_name or not button or not code:
             _LOGGER.error("Получены неполные данные для сохранения IR-кода")
             return
         
@@ -292,67 +289,57 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return
         
         # Сохраняем код
-        success = await ir_data.async_add_command(device, button, code)
+        success = await ir_data.async_add_command(device_name, button, code)
         
         if success:
-            _LOGGER.info("IR-код для %s - %s успешно сохранен", device, button)
+            _LOGGER.info("IR-код для %s - %s успешно сохранен", device_name, button)
             # Обновляем координатор
             await coordinator.async_refresh()
         else:
-            _LOGGER.error("Не удалось сохранить IR-код для %s - %s", device, button)
+            _LOGGER.error("Не удалось сохранить IR-код для %s - %s", device_name, button)
     
     # Регистрируем обработчик события
     hass.bus.async_listen(f"{DOMAIN}_ir_code_learned", handle_ir_code_learned)
-    _LOGGER.debug("Event handler registered")
+    _LOGGER.info("Event handler registered")
     
     # Регистрация сервисов
     await _register_services(hass)
-    _LOGGER.debug("Services registered")
+    _LOGGER.info("Services registered")
     
-    # Настраиваем платформы
-    _LOGGER.debug("Setting up platforms: %s", PLATFORMS)
+    # Настраиваем платформы ПОСЛЕ регистрации устройства
+    _LOGGER.info("Setting up platforms: %s", PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    _LOGGER.debug("Platforms setup completed")
+    _LOGGER.info("Platforms setup completed")
     
-    # Проверяем результат регистрации сущностей
-    await _debug_check_entities(hass, entry)
-    
-    # Логируем инструкцию для добавления карточки в Lovelace
-    _LOGGER.info(
-        "IR Remote настроен! Для управления используйте сущности устройства 'ИК-пульт', "
-        "которые можно добавить на любую панель мониторинга."
-    )
+    _LOGGER.info("IR Remote настроен успешно!")
     
     return True
 
 
-async def async_register_ir_remote_device(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def async_register_ir_remote_device(hass: HomeAssistant, entry: ConfigEntry):
     """Регистрация устройства ИК-пульта в реестре устройств."""
-    _LOGGER.debug("=== Registering IR Remote device ===")
+    _LOGGER.info("=== Registering IR Remote device ===")
     
     device_registry = dr.async_get(hass)
-    ieee = entry.data.get(CONF_IEEE)
     entry_id = entry.entry_id
     
-    _LOGGER.debug("IEEE: %s, Entry ID: %s", ieee, entry_id)
-    
-    # Получаем информацию об устройстве из ZHA
-    zha_device_info = await get_zha_device_info(hass, ieee)
-    _LOGGER.debug("ZHA device info: %s", zha_device_info)
+    _LOGGER.info("Registering device with entry_id: %s", entry_id)
     
     # Регистрируем устройство
     device = device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
-        identifiers={(DOMAIN, entry_id)},  # Используем entry_id как основной идентификатор
+        identifiers={(DOMAIN, entry_id)},  
         name="ИК-пульт",
-        manufacturer=zha_device_info.get("manufacturer", "IR Remote Integration"),
-        model=zha_device_info.get("model", "IR Controller"),
+        manufacturer="IR Remote Integration",
+        model="IR Controller",
         sw_version="1.1.0",
-        hw_version=zha_device_info.get("hw_version"),
     )
     
-    _LOGGER.debug("IR Remote device registered: %s", device)
-    _LOGGER.debug("Device identifiers: %s", device.identifiers)
+    _LOGGER.info("Device registered successfully")
+    _LOGGER.info("Device ID: %s", device.id)
+    _LOGGER.info("Device identifiers: %s", device.identifiers)
+    
+    return device
 
 
 async def get_zha_device_info(hass: HomeAssistant, ieee: str) -> dict:
