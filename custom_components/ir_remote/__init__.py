@@ -5,6 +5,7 @@ from typing import Any
 from pathlib import Path
 
 import aiofiles
+import asyncio
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -310,6 +311,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Setting up platforms: %s", PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _LOGGER.info("Platforms setup completed")
+    
+    # Принудительно обновляем селекторы через короткое время
+    async def update_selectors():
+        await asyncio.sleep(2)  # Даем время сущностям полностью загрузиться
+        _LOGGER.info("Forcing selector updates...")
+        
+        # Обновляем координатор чтобы селекторы получили данные
+        await coordinator.async_refresh()
+        
+        _LOGGER.info("Selector updates completed")
+    
+    hass.async_create_task(update_selectors())
     
     _LOGGER.info("IR Remote настроен успешно!")
     

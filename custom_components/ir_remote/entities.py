@@ -75,28 +75,41 @@ class IRRemoteDeviceSelector(IRRemoteCoordinatorEntity, SelectEntity):
         """Инициализация селектора устройств."""
         super().__init__(coordinator, config_entry, unique_id_suffix, name)
         self.device_type = device_type
-        self._attr_options = ["none"]
-        self._attr_current_option = "none"
         self._attr_translation_key = f"{device_type}_device"
         
-        _LOGGER.info("Created device selector: type=%s, unique_id=%s", device_type, self._attr_unique_id)
+        # Инициализируем опции из координатора
+        if coordinator.data and "devices" in coordinator.data:
+            self._attr_options = coordinator.data["devices"]
+            _LOGGER.info("Device selector initialized with %d devices: %s", 
+                        len(self._attr_options), self._attr_options)
+        else:
+            self._attr_options = ["none"]
+            _LOGGER.info("Device selector initialized with default options")
+            
+        self._attr_current_option = "none"
+        
+        _LOGGER.info("Created device selector: type=%s, unique_id=%s, options=%s", 
+                    device_type, self._attr_unique_id, self._attr_options)
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Обработка обновления данных координатора."""
-        if self.coordinator.data:
-            devices = self.coordinator.data.get("devices", ["none"])
+        if self.coordinator.data and "devices" in self.coordinator.data:
+            devices = self.coordinator.data["devices"]
             self._attr_options = devices
             
             if self._attr_current_option not in devices:
                 self._attr_current_option = "none"
-                
+            
+            _LOGGER.info("Device selector updated with devices: %s", devices)
             self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
         """Выбор опции в селекторе."""
         self._attr_current_option = option
         self.async_write_ha_state()
+        
+        _LOGGER.info("Device selector option changed to: %s", option)
         
         if self.device_type == "send":
             await self.hass.services.async_call(
@@ -119,23 +132,27 @@ class IRRemoteCommandSelector(IRRemoteCoordinatorEntity, SelectEntity):
     ) -> None:
         """Инициализация селектора команд."""
         super().__init__(coordinator, config_entry, unique_id_suffix, name)
-        self._attr_options = ["none"]
-        self._attr_current_option = "none"
         self._attr_translation_key = "send_command"
         self._device = "none"
+        
+        # Инициализируем с пустыми опциями
+        self._attr_options = ["none"]
+        self._attr_current_option = "none"
         
         _LOGGER.info("Created command selector: unique_id=%s", self._attr_unique_id)
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Обработка обновления данных координатора."""
-        if self._device != "none" and self.coordinator.data:
-            commands = self.coordinator.data.get("commands", {}).get(self._device, ["none"])
+        if self._device != "none" and self.coordinator.data and "commands" in self.coordinator.data:
+            commands = self.coordinator.data["commands"].get(self._device, ["none"])
             self._attr_options = commands
             
             if self._attr_current_option not in commands:
                 self._attr_current_option = "none"
-                
+            
+            _LOGGER.info("Command selector updated for device %s with commands: %s", 
+                        self._device, commands)
             self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
@@ -143,14 +160,19 @@ class IRRemoteCommandSelector(IRRemoteCoordinatorEntity, SelectEntity):
         self._attr_current_option = option
         self.async_write_ha_state()
         
+        _LOGGER.info("Command selector option changed to: %s", option)
+        
     async def async_update_commands(self, device: str) -> None:
         """Обновление списка команд для выбранного устройства."""
         self._device = device
         
-        if device == "none" or not self.coordinator.data:
+        if device == "none" or not self.coordinator.data or "commands" not in self.coordinator.data:
             self._attr_options = ["none"]
+            _LOGGER.info("Command selector cleared for device: %s", device)
         else:
-            self._attr_options = self.coordinator.data.get("commands", {}).get(device, ["none"])
+            commands = self.coordinator.data["commands"].get(device, ["none"])
+            self._attr_options = commands
+            _LOGGER.info("Command selector updated for device %s: %s", device, commands)
         
         self._attr_current_option = "none"
         self.async_write_ha_state()
