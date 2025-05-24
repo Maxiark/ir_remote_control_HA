@@ -55,10 +55,15 @@ class IRRemoteCoordinatorEntity(CoordinatorEntity):
             name="ИК-пульт",
             manufacturer="IR Remote Integration",
             model="IR Controller", 
-            sw_version="1.1.0",
+            sw_version="1.2.0",
         )
         
         _LOGGER.info("Created entity: unique_id=%s, name=%s", self._attr_unique_id, name)
+    
+    @property
+    def _context(self):
+        """Возвращает контекст для вызова сервисов."""
+        return self.hass.context()
 
 
 class IRRemoteDeviceSelector(IRRemoteCoordinatorEntity, SelectEntity):
@@ -112,12 +117,24 @@ class IRRemoteDeviceSelector(IRRemoteCoordinatorEntity, SelectEntity):
         _LOGGER.info("Device selector option changed to: %s", option)
         
         if self.device_type == "send":
-            await self.hass.services.async_call(
-                DOMAIN,
-                "update_commands",
-                {ATTR_DEVICE: option},
-                blocking=True
-            )
+            # Находим селектор команд напрямую
+            entity_registry = er.async_get(self.hass)
+            command_selector_id = None
+            
+            for entity_id, entity_entry in entity_registry.entities.items():
+                if (entity_entry.config_entry_id == self.config_entry.entry_id and
+                    "command_selector" in entity_entry.unique_id):
+                    command_selector_id = entity_id
+                    break
+            
+            if command_selector_id:
+                # Получаем объект сущности
+                entity = self.hass.data["entity_components"]["select"].get_entity(command_selector_id)
+                if entity:
+                    from . import IRRemoteCommandSelector
+                    if isinstance(entity, IRRemoteCommandSelector):
+                        await entity.async_update_commands(option)
+                        _LOGGER.info("Updated commands for device: %s", option)
 
 
 class IRRemoteCommandSelector(IRRemoteCoordinatorEntity, SelectEntity):

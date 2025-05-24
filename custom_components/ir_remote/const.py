@@ -23,7 +23,11 @@ SERVICE_LEARN_CODE = "learn_code"
 SERVICE_SEND_CODE = "send_code"
 SERVICE_SEND_COMMAND = "send_command"
 SERVICE_GET_DATA = "get_data"
-SERVICE_ADD_DEVICE = "add_device" 
+SERVICE_ADD_DEVICE = "add_device"
+SERVICE_REMOVE_DEVICE = "remove_device"
+SERVICE_REMOVE_COMMAND = "remove_command"
+SERVICE_EXPORT_CONFIG = "export_config"
+SERVICE_IMPORT_CONFIG = "import_config"
 
 # Entity attributes
 ATTR_DEVICE = "device"

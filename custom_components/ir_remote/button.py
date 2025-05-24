@@ -15,6 +15,9 @@ from .entities import IRRemoteLearnButton, IRRemoteSendButton, IRRemoteAddDevice
 
 _LOGGER = logging.getLogger(__name__)
 
+# Максимальное количество кнопок на устройство
+MAX_BUTTONS_PER_DEVICE = 50
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -62,6 +65,7 @@ async def async_setup_entry(
     
     # Создаем кнопки устройств из сохраненных кодов
     device_buttons = []
+    total_buttons = 0
     
     # Получаем данные о кодах из координатора
     if coordinator.data and "codes" in coordinator.data:
@@ -69,8 +73,21 @@ async def async_setup_entry(
         _LOGGER.debug("Found codes data: %s", codes)
         
         for device_name, commands in codes.items():
+            device_button_count = 0
             _LOGGER.debug("Processing device: %s with commands: %s", device_name, list(commands.keys()))
-            for command_name, command_data in commands.items():
+            
+            # Сортируем команды для стабильного порядка
+            sorted_commands = sorted(commands.items())
+            
+            for command_name, command_data in sorted_commands:
+                # Ограничиваем количество кнопок на устройство
+                if device_button_count >= MAX_BUTTONS_PER_DEVICE:
+                    _LOGGER.warning(
+                        "Достигнут лимит кнопок для устройства %s (%d кнопок). Пропущено: %s",
+                        device_name, MAX_BUTTONS_PER_DEVICE, command_name
+                    )
+                    continue
+                
                 device_button = IRRemoteDeviceButton(
                     hass,
                     config_entry,
@@ -79,12 +96,14 @@ async def async_setup_entry(
                     command_data,
                 )
                 device_buttons.append(device_button)
+                device_button_count += 1
+                total_buttons += 1
                 _LOGGER.debug("Created device button: %s - %s (unique_id: %s)", 
                              device_name, command_name, device_button.unique_id)
     else:
         _LOGGER.debug("No codes data found in coordinator")
     
-    _LOGGER.debug("Created %d device buttons", len(device_buttons))
+    _LOGGER.debug("Created %d device buttons total", total_buttons)
     
     # Добавляем все кнопки
     all_buttons = ui_buttons + device_buttons

@@ -28,6 +28,10 @@ from .const import (
     SERVICE_SEND_COMMAND,
     SERVICE_GET_DATA,
     SERVICE_ADD_DEVICE,
+    SERVICE_REMOVE_DEVICE,
+    SERVICE_REMOVE_COMMAND,
+    SERVICE_EXPORT_CONFIG,
+    SERVICE_IMPORT_CONFIG,
     ATTR_DEVICE,
     ATTR_BUTTON,
     ATTR_CODE,
@@ -64,6 +68,21 @@ ADD_DEVICE_SCHEMA = vol.Schema({
     vol.Required("name"): cv.string,
 })
 
+REMOVE_DEVICE_SCHEMA = vol.Schema({
+    vol.Required(ATTR_DEVICE): cv.string,
+})
+
+REMOVE_COMMAND_SCHEMA = vol.Schema({
+    vol.Required(ATTR_DEVICE): cv.string,
+    vol.Required("command"): cv.string,
+})
+
+EXPORT_CONFIG_SCHEMA = vol.Schema({})
+
+IMPORT_CONFIG_SCHEMA = vol.Schema({
+    vol.Required("config"): dict,
+})
+
 
 async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис обучения ИК-кодам."""
@@ -98,7 +117,7 @@ async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
             },
             blocking=True
         )
-        _LOGGER.debug("Команда обучения ИК-коду успешно отправлена")
+        _LOGGER.info("Команда обучения ИК-коду успешно отправлена для %s - %s", device, button)
         
         # Добавим уведомление для пользователя
         hass.components.persistent_notification.create(
@@ -109,6 +128,12 @@ async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
         )
     except Exception as e:
         _LOGGER.error("Ошибка отправки команды обучения ИК-коду: %s", e)
+        # Добавим уведомление об ошибке
+        hass.components.persistent_notification.create(
+            f"Ошибка при отправке команды обучения: {e}",
+            "IR Remote: Ошибка",
+            f"{DOMAIN}_error"
+        )
         raise HomeAssistantError(f"Не удалось отправить команду обучения ИК-коду: {e}") from e
 
 
@@ -144,9 +169,15 @@ async def async_send_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
             },
             blocking=True
         )
-        _LOGGER.debug("ИК-код успешно отправлен")
+        _LOGGER.info("ИК-код успешно отправлен (длина кода: %d символов)", len(code))
     except Exception as e:
         _LOGGER.error("Ошибка отправки ИК-кода: %s", e)
+        # Добавим уведомление об ошибке
+        hass.components.persistent_notification.create(
+            f"Ошибка при отправке ИК-кода: {e}",
+            "IR Remote: Ошибка",
+            f"{DOMAIN}_error"
+        )
         raise HomeAssistantError(f"Не удалось отправить ИК-код: {e}") from e
 
 
@@ -226,6 +257,110 @@ async def async_add_device(hass: HomeAssistant, call: ServiceCall) -> None:
         _LOGGER.error("Не удалось добавить устройство %s", device_name)
 
 
+async def async_remove_device(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Сервис для удаления устройства."""
+    device_name = call.data.get(ATTR_DEVICE)
+    
+    if not device_name:
+        _LOGGER.error("Имя устройства не может быть пустым")
+        return
+    
+    # Получаем хранилище данных
+    ir_data = hass.data[DOMAIN].get("data")
+    if not ir_data:
+        _LOGGER.error("Хранилище данных IR не инициализировано")
+        return
+    
+    # Удаляем устройство
+    success = await ir_data.async_remove_device(device_name)
+    
+    if success:
+        # Обновляем данные координатора
+        coordinator = hass.data[DOMAIN].get("coordinator")
+        if coordinator:
+            await coordinator.async_refresh()
+        
+        # Перезагружаем интеграцию для обновления кнопок
+        await hass.config_entries.async_reload(hass.data[DOMAIN].get("config_entry_id"))
+    else:
+        _LOGGER.error("Не удалось удалить устройство %s", device_name)
+
+
+async def async_remove_command(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Сервис для удаления команды."""
+    device_name = call.data.get(ATTR_DEVICE)
+    command = call.data.get("command")
+    
+    if not device_name or not command:
+        _LOGGER.error("Имя устройства и команда не могут быть пустыми")
+        return
+    
+    # Получаем хранилище данных
+    ir_data = hass.data[DOMAIN].get("data")
+    if not ir_data:
+        _LOGGER.error("Хранилище данных IR не инициализировано")
+        return
+    
+    # Удаляем команду
+    success = await ir_data.async_remove_command(device_name, command)
+    
+    if success:
+        # Обновляем данные координатора
+        coordinator = hass.data[DOMAIN].get("coordinator")
+        if coordinator:
+            await coordinator.async_refresh()
+        
+        # Перезагружаем интеграцию для обновления кнопок
+        await hass.config_entries.async_reload(hass.data[DOMAIN].get("config_entry_id"))
+    else:
+        _LOGGER.error("Не удалось удалить команду %s для устройства %s", command, device_name)
+
+
+async def async_export_config(hass: HomeAssistant, call: ServiceCall) -> dict:
+    """Сервис для экспорта конфигурации."""
+    # Получаем хранилище данных
+    ir_data = hass.data[DOMAIN].get("data")
+    if not ir_data:
+        _LOGGER.error("Хранилище данных IR не инициализировано")
+        return {"error": "Data storage not initialized"}
+    
+    # Экспортируем конфигурацию
+    config = await ir_data.async_export_config()
+    
+    _LOGGER.info("Экспортирована конфигурация с %d устройствами", len(config.get("devices", {})))
+    
+    return config
+
+
+async def async_import_config(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Сервис для импорта конфигурации."""
+    config = call.data.get("config")
+    
+    if not config:
+        _LOGGER.error("Конфигурация не предоставлена")
+        return
+    
+    # Получаем хранилище данных
+    ir_data = hass.data[DOMAIN].get("data")
+    if not ir_data:
+        _LOGGER.error("Хранилище данных IR не инициализировано")
+        return
+    
+    # Импортируем конфигурацию
+    success = await ir_data.async_import_config(config)
+    
+    if success:
+        # Обновляем данные координатора
+        coordinator = hass.data[DOMAIN].get("coordinator")
+        if coordinator:
+            await coordinator.async_refresh()
+        
+        # Перезагружаем интеграцию для обновления кнопок
+        await hass.config_entries.async_reload(hass.data[DOMAIN].get("config_entry_id"))
+    else:
+        _LOGGER.error("Не удалось импортировать конфигурацию")
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the IR Remote component."""
     _LOGGER.debug("Setting up IR Remote integration (domain: %s)", DOMAIN)
@@ -247,6 +382,40 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+async def _update_device_buttons(hass: HomeAssistant, entry: ConfigEntry, device_name: str, command_name: str) -> None:
+    """Динамически обновляет кнопки устройства при добавлении новой команды."""
+    from .entities import IRRemoteDeviceButton
+    
+    # Получаем данные о новой команде
+    ir_data = hass.data[DOMAIN].get("data")
+    if not ir_data:
+        return
+    
+    # Загружаем данные
+    await ir_data.async_load()
+    codes = ir_data._data
+    
+    if device_name not in codes or command_name not in codes[device_name]:
+        return
+    
+    command_data = codes[device_name][command_name]
+    
+    # Создаем новую кнопку
+    new_button = IRRemoteDeviceButton(
+        hass,
+        entry,
+        device_name,
+        command_name,
+        command_data,
+    )
+    
+    # Добавляем кнопку через entity platform
+    entity_platform = hass.data["entity_components"]["button"]
+    await entity_platform.async_add_entities([new_button])
+    
+    _LOGGER.info("Динамически добавлена кнопка: %s - %s", device_name, command_name)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up IR Remote from a config entry."""
     _LOGGER.info("=== Setting up IR Remote entry ===")
@@ -259,6 +428,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Инициализация структуры данных
     hass.data[DOMAIN] = {
         "config": entry.data,
+        "config_entry_id": entry.entry_id,  # Сохраняем для перезагрузки
     }
     _LOGGER.info("Initialized domain data structure")
     
@@ -296,12 +466,64 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("IR-код для %s - %s успешно сохранен", device_name, button)
             # Обновляем координатор
             await coordinator.async_refresh()
+            
+            # Создаем уведомление об успешном сохранении
+            hass.components.persistent_notification.create(
+                f"ИК-код для устройства '{device_name}', кнопки '{button}' успешно сохранен!",
+                "IR Remote: Код сохранен",
+                f"{DOMAIN}_saved"
+            )
+            
+            # Обновляем кнопки устройств динамически
+            await _update_device_buttons(hass, entry, device_name, button)
         else:
             _LOGGER.error("Не удалось сохранить IR-код для %s - %s", device_name, button)
+            # Создаем уведомление об ошибке
+            hass.components.persistent_notification.create(
+                f"Не удалось сохранить ИК-код для устройства '{device_name}', кнопки '{button}'",
+                "IR Remote: Ошибка",
+                f"{DOMAIN}_error"
+            )
     
     # Регистрируем обработчик события
     hass.bus.async_listen(f"{DOMAIN}_ir_code_learned", handle_ir_code_learned)
     _LOGGER.info("Event handler registered")
+    
+    # Настраиваем обработчик событий ZHA
+    async def handle_zha_event(event):
+        """Обработчик событий от ZHA устройства."""
+        device_ieee = event.data.get("device_ieee")
+        endpoint_id = event.data.get("endpoint_id")
+        cluster_id = event.data.get("cluster_id")
+        command = event.data.get("command")
+        args = event.data.get("args", {})
+        
+        # Проверяем, что это событие от нашего ИК-устройства
+        if (device_ieee == entry.data.get(CONF_IEEE) and
+            endpoint_id == entry.data.get(CONF_ENDPOINT) and
+            cluster_id == entry.data.get(CONF_CLUSTER)):
+            
+            _LOGGER.debug("Получено событие ZHA от ИК-устройства: command=%s, args=%s", command, args)
+            
+            # Обрабатываем полученный ИК-код
+            if "code" in args:
+                ir_code = args["code"]
+                device_name = args.get("device", "unknown")
+                button_name = args.get("button", "unknown")
+                
+                _LOGGER.info("Получен ИК-код от устройства: device=%s, button=%s", device_name, button_name)
+                
+                # Генерируем событие для сохранения кода
+                hass.bus.async_fire(f"{DOMAIN}_ir_code_learned", {
+                    "device": device_name,
+                    "button": button_name,
+                    "code": ir_code
+                })
+    
+    # Регистрируем обработчик событий ZHA
+    zha_listener = hass.bus.async_listen("zha_event", handle_zha_event)
+    hass.data[DOMAIN]["zha_listener"] = zha_listener
+    _LOGGER.info("ZHA event handler registered")
     
     # Регистрация сервисов
     await _register_services(hass)
@@ -345,7 +567,7 @@ async def async_register_ir_remote_device(hass: HomeAssistant, entry: ConfigEntr
         name="ИК-пульт",
         manufacturer="IR Remote Integration",
         model="IR Controller",
-        sw_version="1.1.0",
+        sw_version="1.2.0",
     )
     
     _LOGGER.info("Device registered successfully")
@@ -456,34 +678,45 @@ async def _register_services(hass: HomeAssistant) -> None:
         schema=ADD_DEVICE_SCHEMA
     )
     
-    # Сервис для обновления списка команд
-    async def async_update_commands(call: ServiceCall) -> None:
-        """Сервис для обновления списка команд устройства."""
-        device = call.data.get(ATTR_DEVICE)
-        
-        # Находим селектор команд
-        for entity_id, entity in hass.data.get("entity_components", {}).get("select", {}).entities.items():
-            from .entities import IRRemoteCommandSelector
-            if isinstance(entity, IRRemoteCommandSelector):
-                await entity.async_update_commands(device)
-                break
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REMOVE_DEVICE,
+        async_remove_device,
+        schema=REMOVE_DEVICE_SCHEMA
+    )
     
     hass.services.async_register(
         DOMAIN,
-        "update_commands",
-        async_update_commands,
-        schema=vol.Schema({
-            vol.Required(ATTR_DEVICE): cv.string,
-        })
+        SERVICE_REMOVE_COMMAND,
+        async_remove_command,
+        schema=REMOVE_COMMAND_SCHEMA
     )
     
-    _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_EXPORT_CONFIG,
+        async_export_config,
+        schema=EXPORT_CONFIG_SCHEMA,
+        supports_response=True
+    )
+    
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_IMPORT_CONFIG,
+        async_import_config,
+        schema=IMPORT_CONFIG_SCHEMA
+    )
+    
+    _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
                 DOMAIN, SERVICE_LEARN_CODE, 
                 DOMAIN, SERVICE_SEND_CODE,
                 DOMAIN, SERVICE_SEND_COMMAND,
                 DOMAIN, SERVICE_GET_DATA,
                 DOMAIN, SERVICE_ADD_DEVICE,
-                DOMAIN, "update_commands")
+                DOMAIN, SERVICE_REMOVE_DEVICE,
+                DOMAIN, SERVICE_REMOVE_COMMAND,
+                DOMAIN, SERVICE_EXPORT_CONFIG,
+                DOMAIN, SERVICE_IMPORT_CONFIG)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -501,6 +734,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_remove(DOMAIN, SERVICE_SEND_COMMAND)
         hass.services.async_remove(DOMAIN, SERVICE_GET_DATA)
         hass.services.async_remove(DOMAIN, SERVICE_ADD_DEVICE)
+        hass.services.async_remove(DOMAIN, SERVICE_REMOVE_DEVICE)
+        hass.services.async_remove(DOMAIN, SERVICE_REMOVE_COMMAND)
+        hass.services.async_remove(DOMAIN, SERVICE_EXPORT_CONFIG)
+        hass.services.async_remove(DOMAIN, SERVICE_IMPORT_CONFIG)
+        
+        # Remove event listeners
+        if "zha_listener" in hass.data[DOMAIN]:
+            hass.data[DOMAIN]["zha_listener"]()
+            _LOGGER.debug("Removed ZHA event listener")
         
         # Remove data
         hass.data.pop(DOMAIN, None)
