@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -42,29 +42,12 @@ from .data import IRRemoteData, setup_ir_data_coordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
-    """Создать уведомление пользователю."""
-    try:
-        await hass.services.async_call(
-            "persistent_notification",
-            "create",
-            {
-                "message": message,
-                "title": title,
-                "notification_id": notification_id
-            }
-        )
-    except Exception as e:
-        _LOGGER.debug("Could not create notification: %s", e)
-        # Если не получается создать уведомление, просто логируем
-        _LOGGER.info("Notification: %s - %s", title, message)
-        
 # Define platforms to load
 PLATFORMS = [Platform.BUTTON, Platform.SELECT, Platform.TEXT]
 
 CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 
-# Service schemas - остаются те же самые
+# Service schemas
 LEARN_CODE_SCHEMA = vol.Schema({
     vol.Required(ATTR_DEVICE): cv.string,
     vol.Required(ATTR_BUTTON): cv.string,
@@ -99,6 +82,24 @@ EXPORT_CONFIG_SCHEMA = vol.Schema({})
 IMPORT_CONFIG_SCHEMA = vol.Schema({
     vol.Required("config"): dict,
 })
+
+
+async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
+    """Создать уведомление пользователю."""
+    try:
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "message": message,
+                "title": title,
+                "notification_id": notification_id
+            }
+        )
+    except Exception as e:
+        _LOGGER.debug("Could not create notification: %s", e)
+        # Если не получается создать уведомление, просто логируем
+        _LOGGER.info("Notification: %s - %s", title, message)
 
 
 async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -237,7 +238,7 @@ async def async_send_command(hass: HomeAssistant, call: ServiceCall) -> None:
     
     # Отправляем ИК-код
     await async_send_ir_code(hass, ServiceCall(DOMAIN, SERVICE_SEND_CODE, {ATTR_CODE: code}))
-    
+
 
 async def async_get_data(hass: HomeAssistant, call: ServiceCall) -> dict:
     """Сервис для получения данных об устройствах и командах."""
@@ -251,13 +252,13 @@ async def async_get_data(hass: HomeAssistant, call: ServiceCall) -> dict:
     
     # Формируем упрощенную структуру данных для возврата
     data = {
-        "devices": coordinator.data.get("devices", [])[1:],  # Исключаем "none"
+        "devices": coordinator.data.get("devices", [])[1:] if coordinator.data.get("devices") else [],
         "commands": {}
     }
     
     # Формируем списки команд для каждого устройства
     for device in data["devices"]:
-        commands = coordinator.data.get("commands", {}).get(device, [])[1:]  # Исключаем "none"
+        commands = coordinator.data.get("commands", {}).get(device, [])[1:] if coordinator.data.get("commands", {}).get(device) else []
         data["commands"][device] = commands
     
     return data
@@ -285,8 +286,10 @@ async def async_add_device(hass: HomeAssistant, call: ServiceCall) -> None:
         coordinator = hass.data[DOMAIN].get("coordinator")
         if coordinator:
             await coordinator.async_refresh()
+        _LOGGER.info("Устройство %s успешно добавлено", device_name)
     else:
         _LOGGER.error("Не удалось добавить устройство %s", device_name)
+
 
 async def async_remove_device(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для удаления устройства."""
@@ -312,7 +315,9 @@ async def async_remove_device(hass: HomeAssistant, call: ServiceCall) -> None:
             await coordinator.async_refresh()
         
         # Перезагружаем интеграцию для обновления кнопок
-        await hass.config_entries.async_reload(hass.data[DOMAIN].get("config_entry_id"))
+        config_entry_id = hass.data[DOMAIN].get("config_entry_id")
+        if config_entry_id:
+            await hass.config_entries.async_reload(config_entry_id)
     else:
         _LOGGER.error("Не удалось удалить устройство %s", device_name)
 
@@ -342,10 +347,11 @@ async def async_remove_command(hass: HomeAssistant, call: ServiceCall) -> None:
             await coordinator.async_refresh()
         
         # Перезагружаем интеграцию для обновления кнопок
-        await hass.config_entries.async_reload(hass.data[DOMAIN].get("config_entry_id"))
+        config_entry_id = hass.data[DOMAIN].get("config_entry_id")
+        if config_entry_id:
+            await hass.config_entries.async_reload(config_entry_id)
     else:
         _LOGGER.error("Не удалось удалить команду %s для устройства %s", command, device_name)
-
 
 
 async def async_export_config(hass: HomeAssistant, call: ServiceCall) -> dict:
@@ -388,36 +394,9 @@ async def async_import_config(hass: HomeAssistant, call: ServiceCall) -> None:
             await coordinator.async_refresh()
         
         # Перезагружаем интеграцию для обновления кнопок
-        await hass.config_entries.async_reload(hass.data[DOMAIN].get("config_entry_id"))
-    else:
-        _LOGGER.error("Не удалось импортировать конфигурацию")
-
-
-async def async_import_config(hass: HomeAssistant, call: ServiceCall) -> None:
-    """Сервис для импорта конфигурации."""
-    config = call.data.get("config")
-    
-    if not config:
-        _LOGGER.error("Конфигурация не предоставлена")
-        return
-    
-    # Получаем хранилище данных
-    ir_data = hass.data[DOMAIN].get("data")
-    if not ir_data:
-        _LOGGER.error("Хранилище данных IR не инициализировано")
-        return
-    
-    # Импортируем конфигурацию
-    success = await ir_data.async_import_config(config)
-    
-    if success:
-        # Обновляем данные координатора
-        coordinator = hass.data[DOMAIN].get("coordinator")
-        if coordinator:
-            await coordinator.async_refresh()
-        
-        # Перезагружаем интеграцию для обновления кнопок
-        await hass.config_entries.async_reload(hass.data[DOMAIN].get("config_entry_id"))
+        config_entry_id = hass.data[DOMAIN].get("config_entry_id")
+        if config_entry_id:
+            await hass.config_entries.async_reload(config_entry_id)
     else:
         _LOGGER.error("Не удалось импортировать конфигурацию")
 
@@ -701,45 +680,6 @@ async def get_zha_device_info(hass: HomeAssistant, ieee: str) -> dict:
     return {}
 
 
-
-
-
-
-async def _debug_check_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Отладочная функция для проверки созданных сущностей."""
-    _LOGGER.debug("=== Checking registered entities ===")
-    
-    entity_registry = er.async_get(hass)
-    device_registry = dr.async_get(hass)
-    
-    # Проверяем устройства
-    devices = device_registry.devices.values()
-    ir_devices = [d for d in devices if entry.entry_id in d.config_entries]
-    _LOGGER.debug("Found %d devices for this integration:", len(ir_devices))
-    for device in ir_devices:
-        _LOGGER.debug("  Device: %s (identifiers: %s)", device.name, device.identifiers)
-    
-    # Проверяем сущности
-    entities = [e for e in entity_registry.entities.values() if e.config_entry_id == entry.entry_id]
-    _LOGGER.debug("Found %d entities for this integration:", len(entities))
-    
-    by_domain = {}
-    for entity in entities:
-        domain = entity.domain
-        if domain not in by_domain:
-            by_domain[domain] = []
-        by_domain[domain].append(entity)
-    
-    for domain, domain_entities in by_domain.items():
-        _LOGGER.debug("  %s domain: %d entities", domain, len(domain_entities))
-        for entity in domain_entities:
-            _LOGGER.debug("    %s: %s (unique_id: %s, device_id: %s)", 
-                         entity.entity_id, entity.original_name, entity.unique_id, entity.device_id)
-    
-    _LOGGER.debug("=== Entity check completed ===")
-
-
-
 async def _register_services(hass: HomeAssistant) -> None:
     """Регистрация сервисов IR Remote."""
     # Регистрация сервисов
@@ -807,7 +747,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         schema=IMPORT_CONFIG_SCHEMA
     )
     
-    _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
+    _LOGGER.info("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
                 DOMAIN, SERVICE_LEARN_CODE, 
                 DOMAIN, SERVICE_SEND_CODE,
                 DOMAIN, SERVICE_SEND_COMMAND,
@@ -817,7 +757,6 @@ async def _register_services(hass: HomeAssistant) -> None:
                 DOMAIN, SERVICE_REMOVE_COMMAND,
                 DOMAIN, SERVICE_EXPORT_CONFIG,
                 DOMAIN, SERVICE_IMPORT_CONFIG)
-
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

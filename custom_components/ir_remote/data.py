@@ -17,6 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 # Блокировка для предотвращения одновременного доступа к файлу
 file_lock = asyncio.Lock()
 
+
 async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
     """Создать уведомление пользователю."""
     try:
@@ -33,7 +34,8 @@ async def async_create_notification(hass: HomeAssistant, message: str, title: st
         _LOGGER.debug("Could not create notification: %s", e)
         # Если не получается создать уведомление, просто логируем
         _LOGGER.info("Notification: %s - %s", title, message)
-        
+
+
 class IRRemoteData:
     """Класс для работы с данными ИК-пульта."""
     
@@ -53,7 +55,7 @@ class IRRemoteData:
             try:
                 # Проверяем существование директории и создаем, если необходимо
                 await self.hass.async_add_executor_job(
-                    lambda: self.data_file.parent.mkdir(exist_ok=True)
+                    lambda: self.data_file.parent.mkdir(parents=True, exist_ok=True)
                 )
                 
                 if await self.hass.async_add_executor_job(lambda: self.data_file.exists()):
@@ -110,7 +112,7 @@ class IRRemoteData:
             try:
                 # Убедимся, что директория существует
                 await self.hass.async_add_executor_job(
-                    lambda: self.data_file.parent.mkdir(exist_ok=True)
+                    lambda: self.data_file.parent.mkdir(parents=True, exist_ok=True)
                 )
                 
                 # Проверим права доступа к директории
@@ -153,7 +155,6 @@ class IRRemoteData:
         """Проверить, загружены ли данные."""
         return self._loaded
     
-
     async def async_add_device(self, device: str) -> bool:
         """Добавить новое устройство."""
         # Валидация имени устройства
@@ -187,16 +188,21 @@ class IRRemoteData:
         
         if success:
             _LOGGER.info("Добавлено новое устройство: %s", device)
-            # Создаем уведомление
-            await async_create_notification(
-                self.hass,
-                f"Устройство '{device}' успешно добавлено",
-                "IR Remote: Устройство добавлено",
-                f"{DOMAIN}_device_added"
-            )
+            # Создаем уведомление через сервис
+            try:
+                await self.hass.services.async_call(
+                    "persistent_notification",
+                    "create",
+                    {
+                        "message": f"Устройство '{device}' успешно добавлено",
+                        "title": "IR Remote: Устройство добавлено",
+                        "notification_id": f"{DOMAIN}_device_added"
+                    }
+                )
+            except Exception as e:
+                _LOGGER.debug("Could not create notification: %s", e)
         
         return success
-
     
     async def async_add_command(self, device: str, command: str, code: str) -> bool:
         """Добавить новую команду для устройства."""
@@ -263,15 +269,61 @@ class IRRemoteData:
         
         if success:
             _LOGGER.info("Удалено устройство: %s", device)
-            # Создаем уведомление
-            await async_create_notification(
-                self.hass,
-                f"Устройство '{device}' удалено",
-                "IR Remote: Устройство удалено",
-                f"{DOMAIN}_device_removed"
-            )
+            # Создаем уведомление через сервис
+            try:
+                await self.hass.services.async_call(
+                    "persistent_notification",
+                    "create",
+                    {
+                        "message": f"Устройство '{device}' удалено",
+                        "title": "IR Remote: Устройство удалено",
+                        "notification_id": f"{DOMAIN}_device_removed"
+                    }
+                )
+            except Exception as e:
+                _LOGGER.debug("Could not create notification: %s", e)
         
         return success
+
+    async def async_remove_command(self, device: str, command: str) -> bool:
+        """Удалить команду для устройства."""
+        if not device or not command or device == "none" or command == "none":
+            _LOGGER.warning("Невозможно удалить команду: недостаточно данных")
+            return False
+        
+        # Загружаем данные, если это первое обращение
+        if not self._loaded:
+            await self.async_load()
+        
+        if device not in (self._data or {}) or command not in self._data[device]:
+            _LOGGER.warning("Команда %s для устройства %s не найдена", command, device)
+            return False
+        
+        # Удаляем команду
+        del self._data[device][command]
+        
+        # Если у устройства не осталось команд, удаляем само устройство
+        if not self._data[device]:
+            del self._data[device]
+            _LOGGER.info("Устройство %s удалено так как не осталось команд", device)
+        
+        success = await self.async_save()
+        
+        if success:
+            _LOGGER.info("Удалена команда %s для устройства %s", command, device)
+        
+        return success
+
+    async def async_export_config(self) -> dict:
+        """Экспортировать конфигурацию устройств и команд."""
+        # Загружаем данные, если это первое обращение
+        if not self._loaded:
+            await self.async_load()
+        
+        return {
+            "version": "1.0",
+            "devices": self._data or {}
+        }
 
     async def async_import_config(self, config: dict) -> bool:
         """Импортировать конфигурацию устройств и команд."""
@@ -308,13 +360,19 @@ class IRRemoteData:
             
             if success:
                 _LOGGER.info("Импортировано %d команд", imported_count)
-                # Создаем уведомление
-                await async_create_notification(
-                    self.hass,
-                    f"Импортировано {imported_count} команд",
-                    "IR Remote: Импорт завершен",
-                    f"{DOMAIN}_import_complete"
-                )
+                # Создаем уведомление через сервис
+                try:
+                    await self.hass.services.async_call(
+                        "persistent_notification",
+                        "create",
+                        {
+                            "message": f"Импортировано {imported_count} команд",
+                            "title": "IR Remote: Импорт завершен",
+                            "notification_id": f"{DOMAIN}_import_complete"
+                        }
+                    )
+                except Exception as e:
+                    _LOGGER.debug("Could not create notification: %s", e)
             else:
                 # Восстанавливаем резервную копию
                 self._data = backup

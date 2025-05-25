@@ -27,6 +27,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+
 async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
     """Создать уведомление пользователю."""
     try:
