@@ -274,7 +274,6 @@ async def async_get_data(hass: HomeAssistant, call: ServiceCall) -> dict:
 async def service_add_device(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для добавления нового устройства."""
     device_name = call.data.get("name")
-    _LOGGER.error("🔥 ФУНКЦИЯ СЕРВИСА ВЫЗВАНА ПРАВИЛЬНО")
     
     if not device_name:
         _LOGGER.error("Имя устройства не может быть пустым")
@@ -553,11 +552,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Настраиваем обработчик событий ZHA
         async def handle_zha_event(event):
             """Обработчик событий от ZHA устройства."""
+            _LOGGER.debug("🔥 ZHA EVENT RECEIVED: %s", event.data)
+            expected_ieee = entry.data.get(CONF_IEEE)
+            expected_endpoint = entry.data.get(CONF_ENDPOINT)
+            expected_cluster = entry.data.get(CONF_CLUSTER)
+            
+            _LOGGER.debug("🎯 ОЖИДАЕМ: ieee=%s, endpoint=%s, cluster=%s", 
+                         expected_ieee, expected_endpoint, expected_cluster)
+            
             device_ieee = event.data.get("device_ieee")
             endpoint_id = event.data.get("endpoint_id")
             cluster_id = event.data.get("cluster_id")
             command = event.data.get("command")
             args = event.data.get("args", {})
+            
+            _LOGGER.debug("🔍 EVENT DETAILS: ieee=%s, endpoint=%s, cluster=%s, command=%s, args=%s", 
+                 device_ieee, endpoint_id, cluster_id, command, args)
             
             # Проверяем, что это событие от нашего ИК-устройства
             if (device_ieee == entry.data.get(CONF_IEEE) and
@@ -580,6 +590,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         "button": button_name,
                         "code": ir_code
                     })
+                else:
+                    _LOGGER.warning("❌ НЕТ КОДА В ARGS: %s", args)
+            else:
+                _LOGGER.debug("⏭️ СОБЫТИЕ НЕ ОТ НАШЕГО УСТРОЙСТВА")
         
         # Регистрируем обработчик событий ZHA
         zha_listener = hass.bus.async_listen("zha_event", handle_zha_event)
