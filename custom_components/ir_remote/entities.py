@@ -27,6 +27,23 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
+    """Создать уведомление пользователю."""
+    try:
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "message": message,
+                "title": title,
+                "notification_id": notification_id
+            }
+        )
+    except Exception as e:
+        _LOGGER.debug("Could not create notification: %s", e)
+        # Если не получается создать уведомление, просто логируем
+        _LOGGER.info("Notification: %s - %s", title, message)
+
 
 class IRRemoteCoordinatorEntity(CoordinatorEntity):
     """Базовый класс для сущностей IR Remote с координатором."""
