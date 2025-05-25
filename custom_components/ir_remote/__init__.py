@@ -4,6 +4,7 @@ import os
 from typing import Any
 from pathlib import Path
 
+from functools import wraps
 import aiofiles
 import asyncio
 import voluptuous as vol
@@ -83,6 +84,12 @@ IMPORT_CONFIG_SCHEMA = vol.Schema({
     vol.Required("config"): dict,
 })
 
+def service_handler(func):
+    @wraps(func)
+    async def wrapper(call: ServiceCall):
+        hass = call.hass  # Получаем hass из call
+        return await func(hass, call)
+    return wrapper
 
 async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
     """Создать уведомление пользователю."""
@@ -263,7 +270,7 @@ async def async_get_data(hass: HomeAssistant, call: ServiceCall) -> dict:
     
     return data
 
-
+@service_handler
 async def service_add_device(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для добавления нового устройства."""
     device_name = call.data.get("name")
