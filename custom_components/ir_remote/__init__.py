@@ -264,9 +264,10 @@ async def async_get_data(hass: HomeAssistant, call: ServiceCall) -> dict:
     return data
 
 
-async def async_add_device(hass: HomeAssistant, call: ServiceCall) -> None:
+async def service_add_device(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для добавления нового устройства."""
     device_name = call.data.get("name")
+    _LOGGER.error("🔥 ФУНКЦИЯ СЕРВИСА ВЫЗВАНА ПРАВИЛЬНО")
     
     if not device_name:
         _LOGGER.error("Имя устройства не может быть пустым")
@@ -714,7 +715,7 @@ async def _register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN,
         SERVICE_ADD_DEVICE,
-        async_add_device,
+        service_add_device,
         schema=ADD_DEVICE_SCHEMA
     )
     

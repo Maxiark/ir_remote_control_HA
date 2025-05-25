@@ -9,5 +9,5 @@
     "iot_class": "local_push",
     "issue_tracker": "https://github.com/Maxiark/ir_remote_control_HA/issues",
     "requirements": ["aiofiles"],
-    "version": "1.1.12"
+    "version": "1.1.13"
 }
