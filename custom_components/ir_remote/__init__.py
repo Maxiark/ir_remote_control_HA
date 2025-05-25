@@ -42,6 +42,23 @@ from .data import IRRemoteData, setup_ir_data_coordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
+    """Создать уведомление пользователю."""
+    try:
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "message": message,
+                "title": title,
+                "notification_id": notification_id
+            }
+        )
+    except Exception as e:
+        _LOGGER.debug("Could not create notification: %s", e)
+        # Если не получается создать уведомление, просто логируем
+        _LOGGER.info("Notification: %s - %s", title, message)
+        
 # Define platforms to load
 PLATFORMS = [Platform.BUTTON, Platform.SELECT, Platform.TEXT]
 
@@ -99,7 +116,8 @@ async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     
     if not ieee or not endpoint_id or not cluster_id:
         _LOGGER.error("Отсутствует конфигурация для ИК-пульта")
-        hass.components.persistent_notification.create(
+        await async_create_notification(
+            hass,
             "Ошибка: отсутствует конфигурация ИК-пульта",
             "IR Remote: Ошибка",
             f"{DOMAIN}_error"
@@ -125,7 +143,8 @@ async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
         _LOGGER.info("Команда обучения ИК-коду успешно отправлена для %s - %s", device, button)
         
         # Добавим уведомление для пользователя
-        hass.components.persistent_notification.create(
+        await async_create_notification(
+            hass,
             f"Ожидание сигнала ИК-пульта для устройства {device}, кнопки {button}. "
             "Направьте пульт на ИК-приемник и нажмите кнопку, которой хотите обучить.",
             "IR Remote: Режим обучения",
@@ -134,7 +153,8 @@ async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     except Exception as e:
         _LOGGER.error("Ошибка отправки команды обучения ИК-коду: %s", e)
         # Добавим уведомление об ошибке
-        hass.components.persistent_notification.create(
+        await async_create_notification(
+            hass,
             f"Ошибка при отправке команды обучения: {e}",
             "IR Remote: Ошибка",
             f"{DOMAIN}_error"
@@ -156,7 +176,8 @@ async def async_send_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     
     if not ieee or not endpoint_id or not cluster_id:
         _LOGGER.error("Отсутствует конфигурация для ИК-пульта")
-        hass.components.persistent_notification.create(
+        await async_create_notification(
+            hass,
             "Ошибка: отсутствует конфигурация ИК-пульта",
             "IR Remote: Ошибка",
             f"{DOMAIN}_error"
@@ -183,7 +204,8 @@ async def async_send_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     except Exception as e:
         _LOGGER.error("Ошибка отправки ИК-кода: %s", e)
         # Добавим уведомление об ошибке
-        hass.components.persistent_notification.create(
+        await async_create_notification(
+            hass,
             f"Ошибка при отправке ИК-кода: {e}",
             "IR Remote: Ошибка",
             f"{DOMAIN}_error"
@@ -215,7 +237,7 @@ async def async_send_command(hass: HomeAssistant, call: ServiceCall) -> None:
     
     # Отправляем ИК-код
     await async_send_ir_code(hass, ServiceCall(DOMAIN, SERVICE_SEND_CODE, {ATTR_CODE: code}))
-
+    
 
 async def async_get_data(hass: HomeAssistant, call: ServiceCall) -> dict:
     """Сервис для получения данных об устройствах и командах."""
@@ -265,7 +287,6 @@ async def async_add_device(hass: HomeAssistant, call: ServiceCall) -> None:
             await coordinator.async_refresh()
     else:
         _LOGGER.error("Не удалось добавить устройство %s", device_name)
-
 
 async def async_remove_device(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для удаления устройства."""
@@ -326,6 +347,7 @@ async def async_remove_command(hass: HomeAssistant, call: ServiceCall) -> None:
         _LOGGER.error("Не удалось удалить команду %s для устройства %s", command, device_name)
 
 
+
 async def async_export_config(hass: HomeAssistant, call: ServiceCall) -> dict:
     """Сервис для экспорта конфигурации."""
     # Получаем хранилище данных
@@ -340,6 +362,35 @@ async def async_export_config(hass: HomeAssistant, call: ServiceCall) -> dict:
     _LOGGER.info("Экспортирована конфигурация с %d устройствами", len(config.get("devices", {})))
     
     return config
+
+
+async def async_import_config(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Сервис для импорта конфигурации."""
+    config = call.data.get("config")
+    
+    if not config:
+        _LOGGER.error("Конфигурация не предоставлена")
+        return
+    
+    # Получаем хранилище данных
+    ir_data = hass.data[DOMAIN].get("data")
+    if not ir_data:
+        _LOGGER.error("Хранилище данных IR не инициализировано")
+        return
+    
+    # Импортируем конфигурацию
+    success = await ir_data.async_import_config(config)
+    
+    if success:
+        # Обновляем данные координатора
+        coordinator = hass.data[DOMAIN].get("coordinator")
+        if coordinator:
+            await coordinator.async_refresh()
+        
+        # Перезагружаем интеграцию для обновления кнопок
+        await hass.config_entries.async_reload(hass.data[DOMAIN].get("config_entry_id"))
+    else:
+        _LOGGER.error("Не удалось импортировать конфигурацию")
 
 
 async def async_import_config(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -488,7 +539,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await coordinator.async_refresh()
                 
                 # Создаем уведомление об успешном сохранении
-                hass.components.persistent_notification.create(
+                await async_create_notification(
+                    hass,
                     f"ИК-код для устройства '{device_name}', кнопки '{button}' успешно сохранен!",
                     "IR Remote: Код сохранен",
                     f"{DOMAIN}_saved"
@@ -499,11 +551,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             else:
                 _LOGGER.error("Не удалось сохранить IR-код для %s - %s", device_name, button)
                 # Создаем уведомление об ошибке
-                hass.components.persistent_notification.create(
+                await async_create_notification(
+                    hass,
                     f"Не удалось сохранить ИК-код для устройства '{device_name}', кнопки '{button}'",
                     "IR Remote: Ошибка",
                     f"{DOMAIN}_error"
                 )
+
         
         # Регистрируем обработчик события
         hass.bus.async_listen(f"{DOMAIN}_ir_code_learned", handle_ir_code_learned)
@@ -564,7 +618,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.info("Final coordinator update completed successfully")
                 
                 # Создаем уведомление об успешной настройке
-                hass.components.persistent_notification.create(
+                await async_create_notification(
+                    hass,
                     "ИК-пульт успешно настроен и готов к использованию!",
                     "IR Remote: Настройка завершена",
                     f"{DOMAIN}_ready"

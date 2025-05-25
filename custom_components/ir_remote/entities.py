@@ -322,7 +322,8 @@ class IRRemoteLearnButton(IRRemoteCoordinatorEntity, ButtonEntity):
         
         if not device_selector or not button_input:
             _LOGGER.warning("Селектор устройства или поле ввода кнопки не найдены")
-            self.hass.components.persistent_notification.create(
+            await async_create_notification(
+                self.hass,
                 "Ошибка: не найдены необходимые элементы интерфейса",
                 "IR Remote: Ошибка",
                 f"{DOMAIN}_error"
@@ -336,7 +337,8 @@ class IRRemoteLearnButton(IRRemoteCoordinatorEntity, ButtonEntity):
         
         if device == "none" or not button:
             _LOGGER.warning("Невозможно начать обучение: device=%s, button=%s", device, button)
-            self.hass.components.persistent_notification.create(
+            await async_create_notification(
+                self.hass,
                 "Ошибка: выберите устройство и введите название кнопки",
                 "IR Remote: Ошибка",
                 f"{DOMAIN}_error"
@@ -355,7 +357,8 @@ class IRRemoteLearnButton(IRRemoteCoordinatorEntity, ButtonEntity):
             )
         except Exception as e:
             _LOGGER.error("Ошибка при вызове сервиса обучения: %s", e)
-            self.hass.components.persistent_notification.create(
+            await async_create_notification(
+                self.hass,
                 f"Ошибка при обучении: {e}",
                 "IR Remote: Ошибка",
                 f"{DOMAIN}_error"
@@ -399,7 +402,8 @@ class IRRemoteSendButton(IRRemoteCoordinatorEntity, ButtonEntity):
         
         if not device_selector or not command_selector:
             _LOGGER.warning("Селектор устройства или селектор команды не найдены")
-            self.hass.components.persistent_notification.create(
+            await async_create_notification(
+                self.hass,
                 "Ошибка: не найдены необходимые элементы интерфейса",
                 "IR Remote: Ошибка",
                 f"{DOMAIN}_error"
@@ -413,7 +417,8 @@ class IRRemoteSendButton(IRRemoteCoordinatorEntity, ButtonEntity):
         
         if device == "none" or command == "none":
             _LOGGER.warning("Невозможно отправить команду: device=%s, command=%s", device, command)
-            self.hass.components.persistent_notification.create(
+            await async_create_notification(
+                self.hass,
                 "Ошибка: выберите устройство и команду",
                 "IR Remote: Ошибка",
                 f"{DOMAIN}_error"
@@ -432,7 +437,8 @@ class IRRemoteSendButton(IRRemoteCoordinatorEntity, ButtonEntity):
             )
         except Exception as e:
             _LOGGER.error("Ошибка при отправке команды: %s", e)
-            self.hass.components.persistent_notification.create(
+            await async_create_notification(
+                self.hass,
                 f"Ошибка при отправке команды: {e}",
                 "IR Remote: Ошибка",
                 f"{DOMAIN}_error"
@@ -472,9 +478,10 @@ class IRRemoteAddDeviceButton(IRRemoteCoordinatorEntity, ButtonEntity):
         
         if not new_device_input:
             _LOGGER.warning("Поле ввода нового устройства не найдено")
-            self.hass.components.persistent_notification.create(
+            await async_create_notification(
+                self.hass,
                 "Ошибка: не найдено поле ввода нового устройства",
-                "IR Remote: Ошибка",
+                "IR Remote: Ошибка",  
                 f"{DOMAIN}_error"
             )
             return
@@ -485,7 +492,8 @@ class IRRemoteAddDeviceButton(IRRemoteCoordinatorEntity, ButtonEntity):
         
         if not device_name:
             _LOGGER.warning("Невозможно добавить устройство: пустое имя")
-            self.hass.components.persistent_notification.create(
+            await async_create_notification(
+                self.hass,
                 "Ошибка: введите название устройства",
                 "IR Remote: Ошибка",
                 f"{DOMAIN}_error"
@@ -505,7 +513,8 @@ class IRRemoteAddDeviceButton(IRRemoteCoordinatorEntity, ButtonEntity):
             await self.coordinator.async_refresh()
         except Exception as e:
             _LOGGER.error("Ошибка при добавлении устройства: %s", e)
-            self.hass.components.persistent_notification.create(
+            await async_create_notification(
+                self.hass,
                 f"Ошибка при добавлении устройства: {e}",
                 "IR Remote: Ошибка",
                 f"{DOMAIN}_error"

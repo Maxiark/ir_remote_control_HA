@@ -17,6 +17,23 @@ _LOGGER = logging.getLogger(__name__)
 # Блокировка для предотвращения одновременного доступа к файлу
 file_lock = asyncio.Lock()
 
+async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
+    """Создать уведомление пользователю."""
+    try:
+        await hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "message": message,
+                "title": title,
+                "notification_id": notification_id
+            }
+        )
+    except Exception as e:
+        _LOGGER.debug("Could not create notification: %s", e)
+        # Если не получается создать уведомление, просто логируем
+        _LOGGER.info("Notification: %s - %s", title, message)
+        
 class IRRemoteData:
     """Класс для работы с данными ИК-пульта."""
     
@@ -136,7 +153,7 @@ class IRRemoteData:
         """Проверить, загружены ли данные."""
         return self._loaded
     
-    # ... остальные методы остаются без изменений ...
+
     async def async_add_device(self, device: str) -> bool:
         """Добавить новое устройство."""
         # Валидация имени устройства
@@ -171,13 +188,15 @@ class IRRemoteData:
         if success:
             _LOGGER.info("Добавлено новое устройство: %s", device)
             # Создаем уведомление
-            self.hass.components.persistent_notification.create(
+            await async_create_notification(
+                self.hass,
                 f"Устройство '{device}' успешно добавлено",
                 "IR Remote: Устройство добавлено",
                 f"{DOMAIN}_device_added"
             )
         
         return success
+
     
     async def async_add_command(self, device: str, command: str, code: str) -> bool:
         """Добавить новую команду для устройства."""
@@ -224,7 +243,90 @@ class IRRemoteData:
         
         return success
     
-    # ... остальные методы остаются такими же ...
+    async def async_remove_device(self, device: str) -> bool:
+        """Удалить устройство и все его команды."""
+        if not device or device == "none":
+            _LOGGER.warning("Невозможно удалить устройство: пустое имя")
+            return False
+        
+        # Загружаем данные, если это первое обращение
+        if not self._loaded:
+            await self.async_load()
+        
+        if device not in (self._data or {}):
+            _LOGGER.warning("Устройство %s не найдено", device)
+            return False
+        
+        # Удаляем устройство
+        del self._data[device]
+        success = await self.async_save()
+        
+        if success:
+            _LOGGER.info("Удалено устройство: %s", device)
+            # Создаем уведомление
+            await async_create_notification(
+                self.hass,
+                f"Устройство '{device}' удалено",
+                "IR Remote: Устройство удалено",
+                f"{DOMAIN}_device_removed"
+            )
+        
+        return success
+
+    async def async_import_config(self, config: dict) -> bool:
+        """Импортировать конфигурацию устройств и команд."""
+        if not isinstance(config, dict) or "devices" not in config:
+            _LOGGER.error("Неверный формат конфигурации для импорта")
+            return False
+        
+        # Создаем резервную копию текущих данных
+        backup = self._data.copy() if self._data else {}
+        
+        try:
+            # Загружаем данные, если это первое обращение
+            if not self._loaded:
+                await self.async_load()
+            
+            if self._data is None:
+                self._data = {}
+            
+            # Импортируем устройства
+            imported_count = 0
+            for device, commands in config["devices"].items():
+                if device not in self._data:
+                    self._data[device] = {}
+                
+                for command, command_data in commands.items():
+                    if isinstance(command_data, dict) and "code" in command_data:
+                        self._data[device][command] = command_data
+                        imported_count += 1
+                    else:
+                        _LOGGER.warning("Пропущена некорректная команда %s для устройства %s", command, device)
+            
+            # Сохраняем импортированные данные
+            success = await self.async_save()
+            
+            if success:
+                _LOGGER.info("Импортировано %d команд", imported_count)
+                # Создаем уведомление
+                await async_create_notification(
+                    self.hass,
+                    f"Импортировано {imported_count} команд",
+                    "IR Remote: Импорт завершен",
+                    f"{DOMAIN}_import_complete"
+                )
+            else:
+                # Восстанавливаем резервную копию
+                self._data = backup
+                _LOGGER.error("Ошибка сохранения импортированных данных")
+            
+            return success
+            
+        except Exception as e:
+            # Восстанавливаем резервную копию
+            self._data = backup
+            _LOGGER.error("Ошибка импорта конфигурации: %s", e)
+            return False
 
 
 async def update_ir_data(hass: HomeAssistant) -> dict:
