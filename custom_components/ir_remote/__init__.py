@@ -108,7 +108,7 @@ async def async_create_notification(hass: HomeAssistant, message: str, title: st
         # Если не получается создать уведомление, просто логируем
         _LOGGER.info("Notification: %s - %s", title, message)
 
-
+@service_handler
 async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис обучения ИК-кодам."""
     device = call.data.get(ATTR_DEVICE)
@@ -169,7 +169,7 @@ async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
         )
         raise HomeAssistantError(f"Не удалось отправить команду обучения ИК-коду: {e}") from e
 
-
+@service_handler
 async def async_send_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для отправки ИК-кодов."""
     code = call.data.get(ATTR_CODE)
@@ -220,7 +220,7 @@ async def async_send_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
         )
         raise HomeAssistantError(f"Не удалось отправить ИК-код: {e}") from e
 
-
+@service_handler
 async def async_send_command(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для отправки команд по имени устройства и команды."""
     device = call.data.get(ATTR_DEVICE)
@@ -246,7 +246,7 @@ async def async_send_command(hass: HomeAssistant, call: ServiceCall) -> None:
     # Отправляем ИК-код
     await async_send_ir_code(hass, ServiceCall(DOMAIN, SERVICE_SEND_CODE, {ATTR_CODE: code}))
 
-
+@service_handler
 async def async_get_data(hass: HomeAssistant, call: ServiceCall) -> dict:
     """Сервис для получения данных об устройствах и командах."""
     coordinator = hass.data[DOMAIN].get("coordinator")
@@ -298,7 +298,7 @@ async def service_add_device(hass: HomeAssistant, call: ServiceCall) -> None:
     else:
         _LOGGER.error("Не удалось добавить устройство %s", device_name)
 
-
+@service_handler
 async def async_remove_device(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для удаления устройства."""
     device_name = call.data.get(ATTR_DEVICE)
@@ -329,7 +329,7 @@ async def async_remove_device(hass: HomeAssistant, call: ServiceCall) -> None:
     else:
         _LOGGER.error("Не удалось удалить устройство %s", device_name)
 
-
+@service_handler
 async def async_remove_command(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для удаления команды."""
     device_name = call.data.get(ATTR_DEVICE)
@@ -361,7 +361,7 @@ async def async_remove_command(hass: HomeAssistant, call: ServiceCall) -> None:
     else:
         _LOGGER.error("Не удалось удалить команду %s для устройства %s", command, device_name)
 
-
+@service_handler
 async def async_export_config(hass: HomeAssistant, call: ServiceCall) -> dict:
     """Сервис для экспорта конфигурации."""
     # Получаем хранилище данных
@@ -377,7 +377,7 @@ async def async_export_config(hass: HomeAssistant, call: ServiceCall) -> dict:
     
     return config
 
-
+@service_handler
 async def async_import_config(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для импорта конфигурации."""
     config = call.data.get("config")
