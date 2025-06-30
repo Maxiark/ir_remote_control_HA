@@ -28,24 +28,6 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
-    """Создать уведомление пользователю."""
-    try:
-        await hass.services.async_call(
-            "persistent_notification",
-            "create",
-            {
-                "message": message,
-                "title": title,
-                "notification_id": notification_id
-            }
-        )
-    except Exception as e:
-        _LOGGER.debug("Could not create notification: %s", e)
-        # Если не получается создать уведомление, просто логируем
-        _LOGGER.info("Notification: %s - %s", title, message)
-
-
 class IRRemoteCoordinatorEntity(CoordinatorEntity):
     """Базовый класс для сущностей IR Remote с координатором."""
     
@@ -76,7 +58,7 @@ class IRRemoteCoordinatorEntity(CoordinatorEntity):
             sw_version="1.2.0",
         )
         
-        _LOGGER.debug("Created entity: unique_id=%s, name=%s", self._attr_unique_id, name)
+        _LOGGER.debug("🏗️ Создана сущность: unique_id=%s, name=%s", self._attr_unique_id, name)
     
     @property
     def available(self) -> bool:
@@ -84,12 +66,12 @@ class IRRemoteCoordinatorEntity(CoordinatorEntity):
         # Сущность доступна, если координатор последний раз успешно обновился
         # или если это первый запуск и данные загружаются
         if not self.coordinator.last_update_success:
-            _LOGGER.debug("Entity %s unavailable: coordinator last update failed", self._attr_unique_id)
+            _LOGGER.debug("⚠️ Сущность %s недоступна: последнее обновление координатора неуспешно", self._attr_unique_id)
             return False
         
         # Проверяем, что данные координатора инициализированы
         if self.coordinator.data is None:
-            _LOGGER.debug("Entity %s unavailable: coordinator data is None", self._attr_unique_id)
+            _LOGGER.debug("⚠️ Сущность %s недоступна: данные координатора None", self._attr_unique_id)
             return False
             
         return True
@@ -118,7 +100,7 @@ class IRRemoteDeviceSelector(IRRemoteCoordinatorEntity, SelectEntity):
         # Обновляем опции из координатора, если данные доступны
         self._update_options_from_coordinator()
         
-        _LOGGER.debug("Created device selector: type=%s, unique_id=%s, initial_options=%s", 
+        _LOGGER.debug("🔽 Создан селектор устройств: type=%s, unique_id=%s, options=%s", 
                     device_type, self._attr_unique_id, self._attr_options)
 
     def _update_options_from_coordinator(self) -> None:
@@ -133,29 +115,29 @@ class IRRemoteDeviceSelector(IRRemoteCoordinatorEntity, SelectEntity):
                 # Проверяем, что текущая опция все еще доступна
                 if self._attr_current_option not in devices:
                     self._attr_current_option = "none"
-                _LOGGER.debug("Updated device selector options: %s", devices)
+                _LOGGER.debug("🔄 Обновлены опции селектора устройств %s: %s", self.device_type, devices)
             else:
-                _LOGGER.debug("No valid devices in coordinator data")
+                _LOGGER.debug("⚠️ Нет валидных устройств в данных координатора")
         else:
-            _LOGGER.debug("No coordinator data available for device selector")
+            _LOGGER.debug("⚠️ Нет данных координатора для селектора устройств")
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Обработка обновления данных координатора."""
-        _LOGGER.debug("Device selector %s handling coordinator update", self._attr_unique_id)
+        _LOGGER.debug("🔄 Селектор устройств %s обрабатывает обновление координатора", self._attr_unique_id)
         self._update_options_from_coordinator()
         self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
         """Выбор опции в селекторе."""
         if option not in self._attr_options:
-            _LOGGER.warning("Invalid option %s not in %s", option, self._attr_options)
+            _LOGGER.warning("❌ Неверная опция %s не в %s", option, self._attr_options)
             return
             
         self._attr_current_option = option
         self.async_write_ha_state()
         
-        _LOGGER.debug("Device selector option changed to: %s", option)
+        _LOGGER.debug("🎯 Опция селектора устройств изменена на: %s", option)
         
         if self.device_type == "send":
             # Находим селектор команд напрямую
@@ -172,8 +154,10 @@ class IRRemoteDeviceSelector(IRRemoteCoordinatorEntity, SelectEntity):
                 # Получаем объект сущности
                 entity = self.hass.data["entity_components"]["select"].get_entity(command_selector_id)
                 if entity and hasattr(entity, 'async_update_commands'):
+                    _LOGGER.debug("🔄 Обновление команд для устройства: %s", option)
                     await entity.async_update_commands(option)
-                    _LOGGER.debug("Updated commands for device: %s", option)
+                else:
+                    _LOGGER.warning("⚠️ Не найден селектор команд или метод async_update_commands")
 
 
 class IRRemoteCommandSelector(IRRemoteCoordinatorEntity, SelectEntity):
@@ -195,7 +179,7 @@ class IRRemoteCommandSelector(IRRemoteCoordinatorEntity, SelectEntity):
         self._attr_options = ["none"]
         self._attr_current_option = "none"
         
-        _LOGGER.debug("Created command selector: unique_id=%s", self._attr_unique_id)
+        _LOGGER.debug("🔽 Создан селектор команд: unique_id=%s", self._attr_unique_id)
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -214,23 +198,24 @@ class IRRemoteCommandSelector(IRRemoteCoordinatorEntity, SelectEntity):
                     if self._attr_current_option not in commands:
                         self._attr_current_option = "none"
                     
-                    _LOGGER.debug("Command selector updated for device %s with commands: %s", 
+                    _LOGGER.debug("🔄 Селектор команд обновлен для устройства %s: %s", 
                                 self._device, commands)
                     self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
         """Выбор опции в селекторе."""
         if option not in self._attr_options:
-            _LOGGER.warning("Invalid command option %s not in %s", option, self._attr_options)
+            _LOGGER.warning("❌ Неверная опция команды %s не в %s", option, self._attr_options)
             return
             
         self._attr_current_option = option
         self.async_write_ha_state()
         
-        _LOGGER.debug("Command selector option changed to: %s", option)
+        _LOGGER.debug("🎯 Опция селектора команд изменена на: %s", option)
         
     async def async_update_commands(self, device: str) -> None:
         """Обновление списка команд для выбранного устройства."""
+        _LOGGER.debug("🔄 Обновление команд для устройства: %s", device)
         self._device = device
         
         if (device == "none" or 
@@ -238,14 +223,14 @@ class IRRemoteCommandSelector(IRRemoteCoordinatorEntity, SelectEntity):
             not isinstance(self.coordinator.data, dict) or
             "commands" not in self.coordinator.data):
             self._attr_options = ["none"]
-            _LOGGER.debug("Command selector cleared for device: %s", device)
+            _LOGGER.debug("🔄 Селектор команд очищен для устройства: %s", device)
         else:
             commands_data = self.coordinator.data["commands"]
             if isinstance(commands_data, dict):
                 commands = commands_data.get(device, ["none"])
                 if isinstance(commands, list):
                     self._attr_options = commands
-                    _LOGGER.debug("Command selector updated for device %s: %s", device, commands)
+                    _LOGGER.debug("🔄 Селектор команд обновлен для устройства %s: %s", device, commands)
                 else:
                     self._attr_options = ["none"]
             else:
@@ -271,10 +256,11 @@ class IRRemoteButtonInput(IRRemoteCoordinatorEntity, TextEntity):
         self._attr_translation_key = "button_name"
         self._attr_mode = "text"
         
-        _LOGGER.debug("Created button input: unique_id=%s", self._attr_unique_id)
+        _LOGGER.debug("📝 Создано поле ввода кнопки: unique_id=%s", self._attr_unique_id)
 
     async def async_set_value(self, value: str) -> None:
         """Установка значения текстового поля."""
+        _LOGGER.debug("📝 Установка значения поля кнопки: '%s'", value)
         self._attr_native_value = value
         self.async_write_ha_state()
 
@@ -295,10 +281,11 @@ class IRRemoteNewDeviceInput(IRRemoteCoordinatorEntity, TextEntity):
         self._attr_translation_key = "new_device_name"
         self._attr_mode = "text"
         
-        _LOGGER.debug("Created new device input: unique_id=%s", self._attr_unique_id)
+        _LOGGER.debug("📝 Создано поле ввода нового устройства: unique_id=%s", self._attr_unique_id)
 
     async def async_set_value(self, value: str) -> None:
         """Установка значения текстового поля."""
+        _LOGGER.debug("📝 Установка значения поля нового устройства: '%s'", value)
         self._attr_native_value = value
         self.async_write_ha_state()
 
@@ -317,15 +304,17 @@ class IRRemoteLearnButton(IRRemoteCoordinatorEntity, ButtonEntity):
         super().__init__(coordinator, config_entry, unique_id_suffix, name)
         self._attr_translation_key = "learn_button"
         
-        _LOGGER.debug("Created learn button: unique_id=%s", self._attr_unique_id)
+        _LOGGER.debug("🎓 Создана кнопка обучения: unique_id=%s", self._attr_unique_id)
 
     async def async_press(self) -> None:
         """Обработка нажатия кнопки."""
-        _LOGGER.debug("Кнопка обучения нажата")
+        _LOGGER.info("🎓 КНОПКА ОБУЧЕНИЯ НАЖАТА")
         
         device_selector = None
         button_input = None
         entity_registry = er.async_get(self.hass)
+        
+        _LOGGER.debug("🔍 Поиск селектора устройства и поля ввода кнопки...")
         
         for entity_id, entity_entry in entity_registry.entities.items():
             if entity_entry.config_entry_id == self.config_entry.entry_id:
@@ -333,37 +322,29 @@ class IRRemoteLearnButton(IRRemoteCoordinatorEntity, ButtonEntity):
                     entity = self.hass.states.get(entity_id)
                     if entity:
                         device_selector = entity
+                        _LOGGER.debug("📋 Найден селектор устройства: %s = %s", entity_id, entity.state)
                 elif "button_input" in entity_entry.unique_id:
                     entity = self.hass.states.get(entity_id)
                     if entity:
                         button_input = entity
+                        _LOGGER.debug("📋 Найдено поле ввода кнопки: %s = %s", entity_id, entity.state)
         
         if not device_selector or not button_input:
-            _LOGGER.warning("Селектор устройства или поле ввода кнопки не найдены")
-            await async_create_notification(
-                self.hass,
-                "Ошибка: не найдены необходимые элементы интерфейса",
-                "IR Remote: Ошибка",
-                f"{DOMAIN}_error"
-            )
+            _LOGGER.error("❌ Селектор устройства или поле ввода кнопки не найдены: device_selector=%s, button_input=%s", 
+                         device_selector is not None, button_input is not None)
             return
         
         device = device_selector.state if device_selector else "none"
         button = button_input.state if button_input else ""
         
-        _LOGGER.debug("Обучение: устройство=%s, кнопка=%s", device, button)
+        _LOGGER.info("📋 Параметры обучения: устройство='%s', кнопка='%s'", device, button)
         
         if device == "none" or not button:
-            _LOGGER.warning("Невозможно начать обучение: device=%s, button=%s", device, button)
-            await async_create_notification(
-                self.hass,
-                "Ошибка: выберите устройство и введите название кнопки",
-                "IR Remote: Ошибка",
-                f"{DOMAIN}_error"
-            )
+            _LOGGER.warning("❌ Невозможно начать обучение: device=%s, button='%s'", device, button)
             return
         
         try:
+            _LOGGER.info("🚀 Вызов сервиса обучения...")
             await self.hass.services.async_call(
                 DOMAIN,
                 "learn_code",
@@ -373,14 +354,9 @@ class IRRemoteLearnButton(IRRemoteCoordinatorEntity, ButtonEntity):
                 },
                 blocking=True
             )
+            _LOGGER.info("✅ Сервис обучения вызван успешно")
         except Exception as e:
-            _LOGGER.error("Ошибка при вызове сервиса обучения: %s", e)
-            await async_create_notification(
-                self.hass,
-                f"Ошибка при обучении: {e}",
-                "IR Remote: Ошибка",
-                f"{DOMAIN}_error"
-            )
+            _LOGGER.error("❌ Ошибка при вызове сервиса обучения: %s", e, exc_info=True)
 
 
 class IRRemoteSendButton(IRRemoteCoordinatorEntity, ButtonEntity):
@@ -397,15 +373,17 @@ class IRRemoteSendButton(IRRemoteCoordinatorEntity, ButtonEntity):
         super().__init__(coordinator, config_entry, unique_id_suffix, name)
         self._attr_translation_key = "send_button"
         
-        _LOGGER.debug("Created send button: unique_id=%s", self._attr_unique_id)
+        _LOGGER.debug("📡 Создана кнопка отправки: unique_id=%s", self._attr_unique_id)
 
     async def async_press(self) -> None:
         """Обработка нажатия кнопки."""
-        _LOGGER.debug("Кнопка отправки команды нажата")
+        _LOGGER.info("📡 КНОПКА ОТПРАВКИ КОМАНДЫ НАЖАТА")
         
         device_selector = None
         command_selector = None
         entity_registry = er.async_get(self.hass)
+        
+        _LOGGER.debug("🔍 Поиск селекторов устройства и команды...")
         
         for entity_id, entity_entry in entity_registry.entities.items():
             if entity_entry.config_entry_id == self.config_entry.entry_id:
@@ -413,37 +391,29 @@ class IRRemoteSendButton(IRRemoteCoordinatorEntity, ButtonEntity):
                     entity = self.hass.states.get(entity_id)
                     if entity:
                         device_selector = entity
+                        _LOGGER.debug("📋 Найден селектор устройства: %s = %s", entity_id, entity.state)
                 elif "command_selector" in entity_entry.unique_id:
                     entity = self.hass.states.get(entity_id)
                     if entity:
                         command_selector = entity
+                        _LOGGER.debug("📋 Найден селектор команды: %s = %s", entity_id, entity.state)
         
         if not device_selector or not command_selector:
-            _LOGGER.warning("Селектор устройства или селектор команды не найдены")
-            await async_create_notification(
-                self.hass,
-                "Ошибка: не найдены необходимые элементы интерфейса",
-                "IR Remote: Ошибка",
-                f"{DOMAIN}_error"
-            )
+            _LOGGER.error("❌ Селектор устройства или селектор команды не найдены: device_selector=%s, command_selector=%s", 
+                         device_selector is not None, command_selector is not None)
             return
         
         device = device_selector.state if device_selector else "none"
         command = command_selector.state if command_selector else "none"
         
-        _LOGGER.debug("Отправка команды: устройство=%s, команда=%s", device, command)
+        _LOGGER.info("📋 Параметры отправки: устройство='%s', команда='%s'", device, command)
         
         if device == "none" or command == "none":
-            _LOGGER.warning("Невозможно отправить команду: device=%s, command=%s", device, command)
-            await async_create_notification(
-                self.hass,
-                "Ошибка: выберите устройство и команду",
-                "IR Remote: Ошибка",
-                f"{DOMAIN}_error"
-            )
+            _LOGGER.warning("❌ Невозможно отправить команду: device=%s, command=%s", device, command)
             return
         
         try:
+            _LOGGER.info("🚀 Вызов сервиса отправки команды...")
             await self.hass.services.async_call(
                 DOMAIN,
                 "send_command",
@@ -453,14 +423,9 @@ class IRRemoteSendButton(IRRemoteCoordinatorEntity, ButtonEntity):
                 },
                 blocking=True
             )
+            _LOGGER.info("✅ Сервис отправки команды вызван успешно")
         except Exception as e:
-            _LOGGER.error("Ошибка при отправке команды: %s", e)
-            await async_create_notification(
-                self.hass,
-                f"Ошибка при отправке команды: {e}",
-                "IR Remote: Ошибка",
-                f"{DOMAIN}_error"
-            )
+            _LOGGER.error("❌ Ошибка при отправке команды: %s", e, exc_info=True)
 
 
 class IRRemoteAddDeviceButton(IRRemoteCoordinatorEntity, ButtonEntity):
@@ -477,14 +442,16 @@ class IRRemoteAddDeviceButton(IRRemoteCoordinatorEntity, ButtonEntity):
         super().__init__(coordinator, config_entry, unique_id_suffix, name)
         self._attr_translation_key = "add_device_button"
         
-        _LOGGER.debug("Created add device button: unique_id=%s", self._attr_unique_id)
+        _LOGGER.debug("➕ Создана кнопка добавления устройства: unique_id=%s", self._attr_unique_id)
 
     async def async_press(self) -> None:
         """Обработка нажатия кнопки."""
-        _LOGGER.debug("Кнопка добавления устройства нажата")
+        _LOGGER.info("➕ КНОПКА ДОБАВЛЕНИЯ УСТРОЙСТВА НАЖАТА")
         
         new_device_input = None
         entity_registry = er.async_get(self.hass)
+        
+        _LOGGER.debug("🔍 Поиск поля ввода нового устройства...")
         
         for entity_id, entity_entry in entity_registry.entities.items():
             if (entity_entry.config_entry_id == self.config_entry.entry_id and
@@ -492,33 +459,23 @@ class IRRemoteAddDeviceButton(IRRemoteCoordinatorEntity, ButtonEntity):
                 entity = self.hass.states.get(entity_id)
                 if entity:
                     new_device_input = entity
+                    _LOGGER.debug("📋 Найдено поле ввода нового устройства: %s = '%s'", entity_id, entity.state)
                 break
         
         if not new_device_input:
-            _LOGGER.warning("Поле ввода нового устройства не найдено")
-            await async_create_notification(
-                self.hass,
-                "Ошибка: не найдено поле ввода нового устройства",
-                "IR Remote: Ошибка",  
-                f"{DOMAIN}_error"
-            )
+            _LOGGER.error("❌ Поле ввода нового устройства не найдено")
             return
         
         device_name = new_device_input.state.strip() if new_device_input.state else ""
         
-        _LOGGER.debug("Добавление устройства: '%s'", device_name)
+        _LOGGER.info("📋 Добавление устройства: '%s'", device_name)
         
         if not device_name:
-            _LOGGER.warning("Невозможно добавить устройство: пустое имя")
-            await async_create_notification(
-                self.hass,
-                "Ошибка: введите название устройства",
-                "IR Remote: Ошибка",
-                f"{DOMAIN}_error"
-            )
+            _LOGGER.warning("❌ Невозможно добавить устройство: пустое имя")
             return
         
         try:
+            _LOGGER.info("🚀 Вызов сервиса добавления устройства...")
             await self.hass.services.async_call(
                 DOMAIN,
                 "add_device",
@@ -527,16 +484,13 @@ class IRRemoteAddDeviceButton(IRRemoteCoordinatorEntity, ButtonEntity):
                 },
                 blocking=True
             )
+            _LOGGER.info("✅ Сервис добавления устройства вызван успешно")
             
+            _LOGGER.debug("🔄 Обновление координатора...")
             await self.coordinator.async_refresh()
+            _LOGGER.debug("✅ Координатор обновлен")
         except Exception as e:
-            _LOGGER.error("Ошибка при добавлении устройства: %s", e)
-            await async_create_notification(
-                self.hass,
-                f"Ошибка при добавлении устройства: {e}",
-                "IR Remote: Ошибка",
-                f"{DOMAIN}_error"
-            )
+            _LOGGER.error("❌ Ошибка при добавлении устройства: %s", e, exc_info=True)
 
 
 class IRRemoteDeviceButton(ButtonEntity):
@@ -570,7 +524,8 @@ class IRRemoteDeviceButton(ButtonEntity):
             via_device=(DOMAIN, self.config_entry.entry_id),
         )
         
-        _LOGGER.debug("Created device button: device=%s, command=%s", device_name, command_name)
+        _LOGGER.debug("🔘 Создана кнопка устройства: device=%s, command=%s, unique_id=%s", 
+                     device_name, command_name, self._attr_unique_id)
 
     @property
     def available(self) -> bool:
@@ -579,12 +534,14 @@ class IRRemoteDeviceButton(ButtonEntity):
 
     async def async_press(self) -> None:
         """Обработка нажатия кнопки."""
-        _LOGGER.debug("Device button pressed: %s - %s", self.device_name, self.command_name)
+        _LOGGER.info("🔘 НАЖАТА КНОПКА УСТРОЙСТВА: %s - %s", self.device_name, self.command_name)
         
         code = self.command_data.get("code")
         if not code:
-            _LOGGER.error("No IR code found for %s - %s", self.device_name, self.command_name)
+            _LOGGER.error("❌ Не найден ИК-код для %s - %s", self.device_name, self.command_name)
             return
+        
+        _LOGGER.debug("📡 Отправка ИК-кода длиной %d символов", len(code))
         
         try:
             await self.hass.services.async_call(
@@ -595,5 +552,7 @@ class IRRemoteDeviceButton(ButtonEntity):
                 },
                 blocking=True
             )
+            _LOGGER.info("✅ ИК-код отправлен успешно для %s - %s", self.device_name, self.command_name)
         except Exception as e:
-            _LOGGER.error("Ошибка при отправке ИК-кода: %s", e)
+            _LOGGER.error("❌ Ошибка при отправке ИК-кода для %s - %s: %s", 
+                         self.device_name, self.command_name, e, exc_info=True)

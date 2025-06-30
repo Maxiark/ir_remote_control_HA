@@ -1,21 +1,22 @@
-"""IR Remote data handler - исправленная версия."""
+"""IR Remote data handler - исправленная версия с Storage API."""
 import logging
-import json
-import os
 import asyncio
 from pathlib import Path
-import aiofiles
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.json import JSONEncoder
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Блокировка для предотвращения одновременного доступа к файлу
-file_lock = asyncio.Lock()
+# Версия хранилища данных
+STORAGE_VERSION = 1
+STORAGE_KEY = "ir_remote_codes"
+
+# Блокировка для предотвращения одновременного доступа
+storage_lock = asyncio.Lock()
 
 
 async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
@@ -32,105 +33,104 @@ async def async_create_notification(hass: HomeAssistant, message: str, title: st
         )
     except Exception as e:
         _LOGGER.debug("Could not create notification: %s", e)
-        # Если не получается создать уведомление, просто логируем
         _LOGGER.info("Notification: %s - %s", title, message)
 
 
 class IRRemoteData:
-    """Класс для работы с данными ИК-пульта."""
+    """Класс для работы с данными ИК-пульта через Storage API."""
     
     def __init__(self, hass: HomeAssistant):
         """Инициализация хранилища данных."""
         self.hass = hass
-        self.data_file = Path(hass.config.path()) / "custom_components" / DOMAIN / "scripts" / "ir_codes.json"
+        # Используем Storage API для хранения данных
+        self.store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        # Старый путь для миграции данных
+        self.old_data_file = Path(hass.config.path()) / "custom_components" / DOMAIN / "scripts" / "ir_codes.json"
         self._data = None
         self._loaded = False
+        
+        _LOGGER.info("IR Remote using Storage API: %s", STORAGE_KEY)
+    
+    async def _migrate_old_data(self) -> None:
+        """Миграция данных из старого местоположения."""
+        try:
+            # Проверяем, есть ли старый файл и нет ли уже данных в Storage
+            old_exists = await self.hass.async_add_executor_job(lambda: self.old_data_file.exists())
+            storage_data = await self.store.async_load()
+            
+            if old_exists and not storage_data:
+                _LOGGER.info("Migrating IR codes from old location to Storage API")
+                
+                # Читаем старый файл
+                import json
+                import aiofiles
+                
+                async with aiofiles.open(self.old_data_file, 'r', encoding='utf-8') as f:
+                    old_content = await f.read()
+                
+                old_data = json.loads(old_content)
+                
+                # Создаем резервную копию старого файла
+                backup_path = self.old_data_file.with_suffix('.backup')
+                async with aiofiles.open(backup_path, 'w', encoding='utf-8') as f:
+                    await f.write(old_content)
+                
+                # Сохраняем в Storage API
+                await self.store.async_save(old_data)
+                
+                _LOGGER.info("Migration completed successfully. Backup saved: %s", backup_path)
+                
+                # Уведомляем пользователя о миграции
+                await async_create_notification(
+                    self.hass,
+                    "Данные ИК-пульта перенесены в системное хранилище Home Assistant. "
+                    "Теперь они не будут потеряны при обновлениях интеграции и будут "
+                    "автоматически включены в резервные копии HA.",
+                    "IR Remote: Миграция данных",
+                    f"{DOMAIN}_migration"
+                )
+                
+        except Exception as e:
+            _LOGGER.error("Error during data migration: %s", e, exc_info=True)
     
     async def async_load(self) -> dict:
-        """Загрузка данных из файла."""
+        """Загрузка данных из Storage API."""
         if self._loaded and self._data is not None:
             return self._data
         
-        async with file_lock:
+        async with storage_lock:
             try:
-                # Проверяем существование директории и создаем, если необходимо
-                await self.hass.async_add_executor_job(
-                    lambda: self.data_file.parent.mkdir(parents=True, exist_ok=True)
-                )
+                # Сначала пытаемся мигрировать старые данные
+                await self._migrate_old_data()
                 
-                if await self.hass.async_add_executor_job(lambda: self.data_file.exists()):
-                    # Проверяем права доступа
-                    if not await self.hass.async_add_executor_job(lambda: os.access(self.data_file, os.R_OK | os.W_OK)):
-                        _LOGGER.error("Недостаточно прав для чтения/записи файла: %s", self.data_file)
-                        self._data = {}
-                        self._loaded = True
-                        return self._data
-                    
-                    async with aiofiles.open(self.data_file, 'r', encoding='utf-8') as f:
-                        content = await f.read()
-                        if content.strip():  # Проверяем, что файл не пустой
-                            self._data = json.loads(content)
-                        else:
-                            self._data = {}
-                        _LOGGER.info("Данные IR успешно загружены из %s: %d устройств", 
-                                   self.data_file, len(self._data))
-                else:
-                    _LOGGER.info("Файл данных IR не найден, создаем новый: %s", self.data_file)
+                # Загружаем данные из Storage API
+                self._data = await self.store.async_load()
+                
+                if self._data is None:
+                    _LOGGER.info("No existing IR data found, initializing empty storage")
                     self._data = {}
-                    # Создаем пустой файл
-                    await self.async_save()
+                    await self.store.async_save(self._data)
+                else:
+                    _LOGGER.info("IR data loaded from storage: %d devices", len(self._data))
                 
                 self._loaded = True
                 
-            except json.JSONDecodeError as e:
-                _LOGGER.error("Ошибка чтения данных IR: %s", e)
-                # Создаем резервную копию поврежденного файла
-                if await self.hass.async_add_executor_job(lambda: self.data_file.exists()):
-                    backup_path = self.data_file.with_suffix(f".json.backup.{int(asyncio.get_event_loop().time())}")
-                    await self.hass.async_add_executor_job(
-                        lambda: self.data_file.rename(backup_path)
-                    )
-                    _LOGGER.info("Создана резервная копия поврежденного файла: %s", backup_path)
-                
-                self._data = {}
-                self._loaded = True
-                await self.async_save()
-            except PermissionError as e:
-                _LOGGER.error("Ошибка доступа к файлу: %s", e)
-                self._data = {}
-                self._loaded = True
             except Exception as e:
-                _LOGGER.error("Непредвиденная ошибка при загрузке данных: %s", e, exc_info=True)
+                _LOGGER.error("Error loading IR data from storage: %s", e, exc_info=True)
                 self._data = {}
                 self._loaded = True
         
         return self._data
     
     async def async_save(self) -> bool:
-        """Сохранение данных в файл."""
-        async with file_lock:
+        """Сохранение данных в Storage API."""
+        async with storage_lock:
             try:
-                # Убедимся, что директория существует
-                await self.hass.async_add_executor_job(
-                    lambda: self.data_file.parent.mkdir(parents=True, exist_ok=True)
-                )
-                
-                # Проверим права доступа к директории
-                if not await self.hass.async_add_executor_job(lambda: os.access(self.data_file.parent, os.W_OK)):
-                    _LOGGER.error("Недостаточно прав для записи в директорию: %s", self.data_file.parent)
-                    return False
-                
-                # Сохраняем с форматированием
-                async with aiofiles.open(self.data_file, 'w', encoding='utf-8') as f:
-                    await f.write(json.dumps(self._data or {}, indent=2, ensure_ascii=False, cls=JSONEncoder))
-                
-                _LOGGER.debug("Данные IR успешно сохранены в %s", self.data_file)
+                await self.store.async_save(self._data or {})
+                _LOGGER.debug("IR data successfully saved to storage")
                 return True
-            except PermissionError as e:
-                _LOGGER.error("Ошибка прав доступа при сохранении данных IR: %s", e)
-                return False
             except Exception as e:
-                _LOGGER.error("Ошибка сохранения данных IR: %s", e, exc_info=True)
+                _LOGGER.error("Error saving IR data to storage: %s", e, exc_info=True)
                 return False
     
     def get_devices(self) -> list:
@@ -188,16 +188,12 @@ class IRRemoteData:
         
         if success:
             _LOGGER.info("Добавлено новое устройство: %s", device)
-            # Создаем уведомление через сервис
             try:
-                await self.hass.services.async_call(
-                    "persistent_notification",
-                    "create",
-                    {
-                        "message": f"Устройство '{device}' успешно добавлено",
-                        "title": "IR Remote: Устройство добавлено",
-                        "notification_id": f"{DOMAIN}_device_added"
-                    }
+                await async_create_notification(
+                    self.hass,
+                    f"Устройство '{device}' успешно добавлено",
+                    "IR Remote: Устройство добавлено",
+                    f"{DOMAIN}_device_added"
                 )
             except Exception as e:
                 _LOGGER.debug("Could not create notification: %s", e)
@@ -208,7 +204,8 @@ class IRRemoteData:
         """Добавить новую команду для устройства."""
         # Валидация параметров
         if not device or not command or device == "none" or command == "none" or not code:
-            _LOGGER.warning("Невозможно добавить команду: недостаточно данных")
+            _LOGGER.warning("Невозможно добавить команду: недостаточно данных (device=%s, command=%s, code_len=%s)", 
+                          device, command, len(code) if code else 0)
             return False
         
         # Проверка на допустимые символы в имени команды
@@ -231,10 +228,11 @@ class IRRemoteData:
         # Создаем устройство, если его нет
         if device not in self._data:
             self._data[device] = {}
+            _LOGGER.info("Создано новое устройство при добавлении команды: %s", device)
         
         # Проверяем, не существует ли уже такая команда
         if command in self._data[device]:
-            _LOGGER.warning("Команда %s для устройства %s уже существует", command, device)
+            _LOGGER.warning("Команда %s для устройства %s уже существует, перезаписываем", command, device)
         
         self._data[device][command] = {
             "code": code,
@@ -245,7 +243,10 @@ class IRRemoteData:
         success = await self.async_save()
         
         if success:
-            _LOGGER.info("Добавлена новая команда %s для устройства %s", command, device)
+            _LOGGER.info("✅ Добавлена новая команда %s для устройства %s (код длиной %d символов)", 
+                        command, device, len(code))
+        else:
+            _LOGGER.error("❌ Не удалось сохранить команду %s для устройства %s", command, device)
         
         return success
     
@@ -269,16 +270,12 @@ class IRRemoteData:
         
         if success:
             _LOGGER.info("Удалено устройство: %s", device)
-            # Создаем уведомление через сервис
             try:
-                await self.hass.services.async_call(
-                    "persistent_notification",
-                    "create",
-                    {
-                        "message": f"Устройство '{device}' удалено",
-                        "title": "IR Remote: Устройство удалено",
-                        "notification_id": f"{DOMAIN}_device_removed"
-                    }
+                await async_create_notification(
+                    self.hass,
+                    f"Устройство '{device}' удалено",
+                    "IR Remote: Устройство удалено",
+                    f"{DOMAIN}_device_removed"
                 )
             except Exception as e:
                 _LOGGER.debug("Could not create notification: %s", e)
@@ -360,16 +357,12 @@ class IRRemoteData:
             
             if success:
                 _LOGGER.info("Импортировано %d команд", imported_count)
-                # Создаем уведомление через сервис
                 try:
-                    await self.hass.services.async_call(
-                        "persistent_notification",
-                        "create",
-                        {
-                            "message": f"Импортировано {imported_count} команд",
-                            "title": "IR Remote: Импорт завершен",
-                            "notification_id": f"{DOMAIN}_import_complete"
-                        }
+                    await async_create_notification(
+                        self.hass,
+                        f"Импортировано {imported_count} команд",
+                        "IR Remote: Импорт завершен",
+                        f"{DOMAIN}_import_complete"
                     )
                 except Exception as e:
                     _LOGGER.debug("Could not create notification: %s", e)
@@ -394,7 +387,7 @@ async def update_ir_data(hass: HomeAssistant) -> dict:
     # Базовая структура данных
     data = {
         "devices": ["none"],
-        "commands": {"none": ["none"]},  # Добавляем базовую структуру
+        "commands": {"none": ["none"]},
         "codes": {}
     }
     
@@ -417,7 +410,7 @@ async def update_ir_data(hass: HomeAssistant) -> dict:
         devices = ir_data.get_devices()
         if devices:
             data["devices"] = ["none"] + devices
-            _LOGGER.debug("Устройства из ir_codes.json: %s", devices)
+            _LOGGER.debug("Устройства из storage: %s", devices)
         
         # Получаем списки команд для каждого устройства
         for device in devices:

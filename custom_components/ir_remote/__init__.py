@@ -91,30 +91,13 @@ def service_handler(func):
         return await func(hass, call)
     return wrapper
 
-async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
-    """Создать уведомление пользователю."""
-    try:
-        await hass.services.async_call(
-            "persistent_notification",
-            "create",
-            {
-                "message": message,
-                "title": title,
-                "notification_id": notification_id
-            }
-        )
-    except Exception as e:
-        _LOGGER.debug("Could not create notification: %s", e)
-        # Если не получается создать уведомление, просто логируем
-        _LOGGER.info("Notification: %s - %s", title, message)
-
 @service_handler
 async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис обучения ИК-кодам."""
     device = call.data.get(ATTR_DEVICE)
     button = call.data.get(ATTR_BUTTON)
     
-    _LOGGER.debug("Обучение ИК-коду для устройства '%s', кнопки '%s'", device, button)
+    _LOGGER.info("🎓 НАЧАЛО ОБУЧЕНИЯ: устройство='%s', кнопка='%s'", device, button)
     
     # Получаем конфигурацию
     config = hass.data[DOMAIN].get("config", {})
@@ -122,17 +105,19 @@ async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     endpoint_id = config.get(CONF_ENDPOINT)
     cluster_id = config.get(CONF_CLUSTER)
     
+    _LOGGER.debug("📋 Конфигурация ZHA: ieee=%s, endpoint=%s, cluster=%s", ieee, endpoint_id, cluster_id)
+    
     if not ieee or not endpoint_id or not cluster_id:
-        _LOGGER.error("Отсутствует конфигурация для ИК-пульта")
-        await async_create_notification(
-            hass,
-            "Ошибка: отсутствует конфигурация ИК-пульта",
-            "IR Remote: Ошибка",
-            f"{DOMAIN}_error"
-        )
+        _LOGGER.error("❌ Отсутствует конфигурация для ИК-пульта: ieee=%s, endpoint=%s, cluster=%s", 
+                     ieee, endpoint_id, cluster_id)
         return
     
     try:
+        _LOGGER.info("📤 Отправка команды обучения в ZHA...")
+        _LOGGER.debug("📤 ZHA команда: ieee=%s, endpoint=%s, cluster=%s, command=%s, params=%s", 
+                     ieee, endpoint_id, cluster_id, ZHA_COMMAND_LEARN, 
+                     {"on_off": True, "device": device, "button": button})
+        
         # Отправляем ZHA-команду для начала обучения
         await hass.services.async_call(
             "zha",
@@ -148,25 +133,11 @@ async def async_learn_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
             },
             blocking=True
         )
-        _LOGGER.info("Команда обучения ИК-коду успешно отправлена для %s - %s", device, button)
+        _LOGGER.info("✅ Команда обучения успешно отправлена для %s - %s", device, button)
+        _LOGGER.info("⏳ Ожидание ИК-сигнала от пульта...")
         
-        # Добавим уведомление для пользователя
-        await async_create_notification(
-            hass,
-            f"Ожидание сигнала ИК-пульта для устройства {device}, кнопки {button}. "
-            "Направьте пульт на ИК-приемник и нажмите кнопку, которой хотите обучить.",
-            "IR Remote: Режим обучения",
-            f"{DOMAIN}_learning"
-        )
     except Exception as e:
-        _LOGGER.error("Ошибка отправки команды обучения ИК-коду: %s", e)
-        # Добавим уведомление об ошибке
-        await async_create_notification(
-            hass,
-            f"Ошибка при отправке команды обучения: {e}",
-            "IR Remote: Ошибка",
-            f"{DOMAIN}_error"
-        )
+        _LOGGER.error("❌ Ошибка отправки команды обучения ИК-коду: %s", e, exc_info=True)
         raise HomeAssistantError(f"Не удалось отправить команду обучения ИК-коду: {e}") from e
 
 @service_handler
@@ -174,7 +145,7 @@ async def async_send_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для отправки ИК-кодов."""
     code = call.data.get(ATTR_CODE)
     
-    _LOGGER.debug("Отправка ИК-кода: %s", code[:10] + "..." if len(code) > 10 else code)
+    _LOGGER.debug("📡 Отправка ИК-кода: %s", code[:20] + "..." if len(code) > 20 else code)
     
     # Получаем конфигурацию
     config = hass.data[DOMAIN].get("config", {})
@@ -183,13 +154,7 @@ async def async_send_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
     cluster_id = config.get(CONF_CLUSTER)
     
     if not ieee or not endpoint_id or not cluster_id:
-        _LOGGER.error("Отсутствует конфигурация для ИК-пульта")
-        await async_create_notification(
-            hass,
-            "Ошибка: отсутствует конфигурация ИК-пульта",
-            "IR Remote: Ошибка",
-            f"{DOMAIN}_error"
-        )
+        _LOGGER.error("❌ Отсутствует конфигурация для ИК-пульта")
         return
     
     try:
@@ -208,16 +173,9 @@ async def async_send_ir_code(hass: HomeAssistant, call: ServiceCall) -> None:
             },
             blocking=True
         )
-        _LOGGER.info("ИК-код успешно отправлен (длина кода: %d символов)", len(code))
+        _LOGGER.info("📡 ИК-код успешно отправлен (длина: %d символов)", len(code))
     except Exception as e:
-        _LOGGER.error("Ошибка отправки ИК-кода: %s", e)
-        # Добавим уведомление об ошибке
-        await async_create_notification(
-            hass,
-            f"Ошибка при отправке ИК-кода: {e}",
-            "IR Remote: Ошибка",
-            f"{DOMAIN}_error"
-        )
+        _LOGGER.error("❌ Ошибка отправки ИК-кода: %s", e, exc_info=True)
         raise HomeAssistantError(f"Не удалось отправить ИК-код: {e}") from e
 
 @service_handler
@@ -226,22 +184,26 @@ async def async_send_command(hass: HomeAssistant, call: ServiceCall) -> None:
     device = call.data.get(ATTR_DEVICE)
     command = call.data.get("command")
     
+    _LOGGER.debug("🎮 Отправка команды: устройство=%s, команда=%s", device, command)
+    
     if not device or not command or device == "none" or command == "none":
-        _LOGGER.error("Не указано устройство или команда")
+        _LOGGER.error("❌ Не указано устройство или команда: device=%s, command=%s", device, command)
         return
     
     # Получаем хранилище данных
     ir_data = hass.data[DOMAIN].get("data")
     if not ir_data:
-        _LOGGER.error("Хранилище данных IR не инициализировано")
+        _LOGGER.error("❌ Хранилище данных IR не инициализировано")
         return
     
     # Получаем ИК-код
     code = ir_data.get_code(device, command)
     
     if not code:
-        _LOGGER.error("ИК-код не найден для %s - %s", device, command)
+        _LOGGER.error("❌ ИК-код не найден для %s - %s", device, command)
         return
+    
+    _LOGGER.debug("📡 Найден ИК-код для %s - %s, длина: %d", device, command, len(code))
     
     # Отправляем ИК-код
     await async_send_ir_code(hass, ServiceCall(DOMAIN, SERVICE_SEND_CODE, {ATTR_CODE: code}))
@@ -251,7 +213,7 @@ async def async_get_data(hass: HomeAssistant, call: ServiceCall) -> dict:
     """Сервис для получения данных об устройствах и командах."""
     coordinator = hass.data[DOMAIN].get("coordinator")
     if not coordinator:
-        _LOGGER.error("Координатор данных IR не инициализирован")
+        _LOGGER.error("❌ Координатор данных IR не инициализирован")
         return {}
     
     # Обновляем данные
@@ -275,14 +237,16 @@ async def service_add_device(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для добавления нового устройства."""
     device_name = call.data.get("name")
     
+    _LOGGER.info("➕ Добавление нового устройства: '%s'", device_name)
+    
     if not device_name:
-        _LOGGER.error("Имя устройства не может быть пустым")
+        _LOGGER.error("❌ Имя устройства не может быть пустым")
         return
     
     # Получаем хранилище данных
     ir_data = hass.data[DOMAIN].get("data")
     if not ir_data:
-        _LOGGER.error("Хранилище данных IR не инициализировано")
+        _LOGGER.error("❌ Хранилище данных IR не инициализировано")
         return
     
     # Добавляем устройство
@@ -292,24 +256,27 @@ async def service_add_device(hass: HomeAssistant, call: ServiceCall) -> None:
         # Обновляем данные координатора
         coordinator = hass.data[DOMAIN].get("coordinator")
         if coordinator:
+            _LOGGER.debug("🔄 Обновление координатора после добавления устройства")
             await coordinator.async_refresh()
-        _LOGGER.info("Устройство %s успешно добавлено", device_name)
+        _LOGGER.info("✅ Устройство %s успешно добавлено", device_name)
     else:
-        _LOGGER.error("Не удалось добавить устройство %s", device_name)
+        _LOGGER.error("❌ Не удалось добавить устройство %s", device_name)
 
 @service_handler
 async def async_remove_device(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для удаления устройства."""
     device_name = call.data.get(ATTR_DEVICE)
     
+    _LOGGER.info("🗑️ Удаление устройства: '%s'", device_name)
+    
     if not device_name:
-        _LOGGER.error("Имя устройства не может быть пустым")
+        _LOGGER.error("❌ Имя устройства не может быть пустым")
         return
     
     # Получаем хранилище данных
     ir_data = hass.data[DOMAIN].get("data")
     if not ir_data:
-        _LOGGER.error("Хранилище данных IR не инициализировано")
+        _LOGGER.error("❌ Хранилище данных IR не инициализировано")
         return
     
     # Удаляем устройство
@@ -319,14 +286,16 @@ async def async_remove_device(hass: HomeAssistant, call: ServiceCall) -> None:
         # Обновляем данные координатора
         coordinator = hass.data[DOMAIN].get("coordinator")
         if coordinator:
+            _LOGGER.debug("🔄 Обновление координатора после удаления устройства")
             await coordinator.async_refresh()
         
         # Перезагружаем интеграцию для обновления кнопок
         config_entry_id = hass.data[DOMAIN].get("config_entry_id")
         if config_entry_id:
+            _LOGGER.debug("🔄 Перезагрузка интеграции для обновления кнопок")
             await hass.config_entries.async_reload(config_entry_id)
     else:
-        _LOGGER.error("Не удалось удалить устройство %s", device_name)
+        _LOGGER.error("❌ Не удалось удалить устройство %s", device_name)
 
 @service_handler
 async def async_remove_command(hass: HomeAssistant, call: ServiceCall) -> None:
@@ -334,14 +303,16 @@ async def async_remove_command(hass: HomeAssistant, call: ServiceCall) -> None:
     device_name = call.data.get(ATTR_DEVICE)
     command = call.data.get("command")
     
+    _LOGGER.info("🗑️ Удаление команды: устройство='%s', команда='%s'", device_name, command)
+    
     if not device_name or not command:
-        _LOGGER.error("Имя устройства и команда не могут быть пустыми")
+        _LOGGER.error("❌ Имя устройства и команда не могут быть пустыми")
         return
     
     # Получаем хранилище данных
     ir_data = hass.data[DOMAIN].get("data")
     if not ir_data:
-        _LOGGER.error("Хранилище данных IR не инициализировано")
+        _LOGGER.error("❌ Хранилище данных IR не инициализировано")
         return
     
     # Удаляем команду
@@ -351,28 +322,32 @@ async def async_remove_command(hass: HomeAssistant, call: ServiceCall) -> None:
         # Обновляем данные координатора
         coordinator = hass.data[DOMAIN].get("coordinator")
         if coordinator:
+            _LOGGER.debug("🔄 Обновление координатора после удаления команды")
             await coordinator.async_refresh()
         
         # Перезагружаем интеграцию для обновления кнопок
         config_entry_id = hass.data[DOMAIN].get("config_entry_id")
         if config_entry_id:
+            _LOGGER.debug("🔄 Перезагрузка интеграции для обновления кнопок")
             await hass.config_entries.async_reload(config_entry_id)
     else:
-        _LOGGER.error("Не удалось удалить команду %s для устройства %s", command, device_name)
+        _LOGGER.error("❌ Не удалось удалить команду %s для устройства %s", command, device_name)
 
 @service_handler
 async def async_export_config(hass: HomeAssistant, call: ServiceCall) -> dict:
     """Сервис для экспорта конфигурации."""
+    _LOGGER.info("📤 Экспорт конфигурации")
+    
     # Получаем хранилище данных
     ir_data = hass.data[DOMAIN].get("data")
     if not ir_data:
-        _LOGGER.error("Хранилище данных IR не инициализировано")
+        _LOGGER.error("❌ Хранилище данных IR не инициализировано")
         return {"error": "Data storage not initialized"}
     
     # Экспортируем конфигурацию
     config = await ir_data.async_export_config()
     
-    _LOGGER.info("Экспортирована конфигурация с %d устройствами", len(config.get("devices", {})))
+    _LOGGER.info("✅ Экспортирована конфигурация с %d устройствами", len(config.get("devices", {})))
     
     return config
 
@@ -381,14 +356,16 @@ async def async_import_config(hass: HomeAssistant, call: ServiceCall) -> None:
     """Сервис для импорта конфигурации."""
     config = call.data.get("config")
     
+    _LOGGER.info("📥 Импорт конфигурации")
+    
     if not config:
-        _LOGGER.error("Конфигурация не предоставлена")
+        _LOGGER.error("❌ Конфигурация не предоставлена")
         return
     
     # Получаем хранилище данных
     ir_data = hass.data[DOMAIN].get("data")
     if not ir_data:
-        _LOGGER.error("Хранилище данных IR не инициализировано")
+        _LOGGER.error("❌ Хранилище данных IR не инициализировано")
         return
     
     # Импортируем конфигурацию
@@ -398,25 +375,29 @@ async def async_import_config(hass: HomeAssistant, call: ServiceCall) -> None:
         # Обновляем данные координатора
         coordinator = hass.data[DOMAIN].get("coordinator")
         if coordinator:
+            _LOGGER.debug("🔄 Обновление координатора после импорта")
             await coordinator.async_refresh()
         
         # Перезагружаем интеграцию для обновления кнопок
         config_entry_id = hass.data[DOMAIN].get("config_entry_id")
         if config_entry_id:
+            _LOGGER.debug("🔄 Перезагрузка интеграции для обновления кнопок")
             await hass.config_entries.async_reload(config_entry_id)
     else:
-        _LOGGER.error("Не удалось импортировать конфигурацию")
+        _LOGGER.error("❌ Не удалось импортировать конфигурацию")
 
 
 async def _update_device_buttons(hass: HomeAssistant, entry: ConfigEntry, device_name: str, command_name: str) -> None:
     """Динамически обновляет кнопки устройства при добавлении новой команды."""
     try:
+        _LOGGER.debug("🔘 Попытка динамического создания кнопки: %s - %s", device_name, command_name)
+        
         from .entities import IRRemoteDeviceButton
         
         # Получаем данные о новой команде
         ir_data = hass.data[DOMAIN].get("data")
         if not ir_data:
-            _LOGGER.warning("IR data not available for dynamic button update")
+            _LOGGER.warning("❌ IR data не доступны для динамического обновления кнопки")
             return
         
         # Загружаем данные
@@ -424,10 +405,11 @@ async def _update_device_buttons(hass: HomeAssistant, entry: ConfigEntry, device
         codes = ir_data._data
         
         if not codes or device_name not in codes or command_name not in codes[device_name]:
-            _LOGGER.warning("Command data not found for %s - %s", device_name, command_name)
+            _LOGGER.warning("❌ Данные команды не найдены для %s - %s", device_name, command_name)
             return
         
         command_data = codes[device_name][command_name]
+        _LOGGER.debug("📋 Данные команды: %s", command_data)
         
         # Создаем новую кнопку
         new_button = IRRemoteDeviceButton(
@@ -442,43 +424,34 @@ async def _update_device_buttons(hass: HomeAssistant, entry: ConfigEntry, device
         if "entity_components" in hass.data and "button" in hass.data["entity_components"]:
             entity_platform = hass.data["entity_components"]["button"]
             await entity_platform.async_add_entities([new_button])
-            _LOGGER.info("Динамически добавлена кнопка: %s - %s", device_name, command_name)
+            _LOGGER.info("✅ Динамически добавлена кнопка: %s - %s", device_name, command_name)
         else:
-            _LOGGER.warning("Button entity platform not available for dynamic button creation")
+            _LOGGER.warning("❌ Button entity platform недоступна для динамического создания кнопки")
             
     except Exception as e:
-        _LOGGER.error("Error updating device buttons dynamically: %s", e, exc_info=True)
+        _LOGGER.error("❌ Ошибка динамического обновления кнопок: %s", e, exc_info=True)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the IR Remote component."""
-    _LOGGER.info("Setting up IR Remote integration (domain: %s)", DOMAIN)
+    _LOGGER.info("🚀 Настройка IR Remote интеграции (домен: %s)", DOMAIN)
     
     # Инициализируем структуру данных
     hass.data.setdefault(DOMAIN, {})
     
-    # Создаем директорию scripts, если её нет
-    scripts_dir = Path(hass.config.path()) / "custom_components" / DOMAIN / "scripts"
-    _LOGGER.debug("Scripts directory: %s", scripts_dir)
-    
-    try:
-        await hass.async_add_executor_job(lambda: scripts_dir.mkdir(parents=True, exist_ok=True))
-        _LOGGER.info("Scripts directory created/checked")
-    except Exception as e:
-        _LOGGER.error("Failed to initialize IR Remote files: %s", e, exc_info=True)
-        return False
-    
+    _LOGGER.info("✅ IR Remote интеграция инициализирована")
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up IR Remote from a config entry."""
-    _LOGGER.info("=== Setting up IR Remote entry ===")
-    _LOGGER.info("Entry ID: %s", entry.entry_id)
+    _LOGGER.info("=== 🚀 НАСТРОЙКА IR REMOTE ENTRY ===")
+    _LOGGER.info("📋 Entry ID: %s", entry.entry_id)
+    _LOGGER.info("📋 Entry data: %s", entry.data)
     
     # Проверяем доступность ZHA
     if "zha" not in hass.data:
-        _LOGGER.error("ZHA integration not found")
+        _LOGGER.error("❌ ZHA интеграция не найдена")
         raise ConfigEntryNotReady("ZHA integration not available")
     
     # Инициализация структуры данных
@@ -486,18 +459,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "config": entry.data,
         "config_entry_id": entry.entry_id,
     }
-    _LOGGER.info("Initialized domain data structure")
+    _LOGGER.info("✅ Инициализирована структура данных домена")
     
     try:
         # Настройка хранилища данных и координатора (СНАЧАЛА)
-        _LOGGER.info("Setting up data coordinator...")
+        _LOGGER.info("🔧 Настройка координатора данных...")
         coordinator = await setup_ir_data_coordinator(hass)
         hass.data[DOMAIN]["coordinator"] = coordinator
-        _LOGGER.info("Coordinator setup completed")
+        _LOGGER.info("✅ Координатор настроен успешно")
         
         # Регистрируем устройство ПОСЛЕ того, как координатор готов
         device = await async_register_ir_remote_device(hass, entry)  
-        _LOGGER.info("Device registered successfully: %s", device.id)
+        _LOGGER.info("✅ Устройство зарегистрировано: %s", device.id)
         
         # Настраиваем обработчик событий для сохранения IR-кодов
         async def handle_ir_code_learned(event):
@@ -506,48 +479,44 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             button = event.data.get("button")
             code = event.data.get("code")
             
+            _LOGGER.info("🎯 ПОЛУЧЕНО СОБЫТИЕ ОБУЧЕНИЯ: device=%s, button=%s, code_len=%d", 
+                        device_name, button, len(code) if code else 0)
+            
             if not device_name or not button or not code:
-                _LOGGER.error("Получены неполные данные для сохранения IR-кода")
+                _LOGGER.error("❌ Получены неполные данные для сохранения IR-кода: device=%s, button=%s, code=%s", 
+                            device_name, button, "есть" if code else "нет")
                 return
             
             # Получаем хранилище данных
             ir_data = hass.data[DOMAIN].get("data")
             if not ir_data:
-                _LOGGER.error("Хранилище данных IR не инициализировано")
+                _LOGGER.error("❌ Хранилище данных IR не инициализировано")
                 return
+            
+            _LOGGER.debug("💾 Попытка сохранения IR-кода...")
             
             # Сохраняем код
             success = await ir_data.async_add_command(device_name, button, code)
             
             if success:
-                _LOGGER.info("IR-код для %s - %s успешно сохранен", device_name, button)
-                # Обновляем координатор
-                await coordinator.async_refresh()
+                _LOGGER.info("✅ IR-код для %s - %s успешно сохранен", device_name, button)
                 
-                # Создаем уведомление об успешном сохранении
-                await async_create_notification(
-                    hass,
-                    f"ИК-код для устройства '{device_name}', кнопки '{button}' успешно сохранен!",
-                    "IR Remote: Код сохранен",
-                    f"{DOMAIN}_saved"
-                )
+                # Обновляем координатор
+                _LOGGER.debug("🔄 Обновление координатора...")
+                await coordinator.async_refresh()
+                _LOGGER.debug("✅ Координатор обновлен")
                 
                 # Обновляем кнопки устройств динамически
+                _LOGGER.debug("🔘 Попытка динамического обновления кнопок...")
                 await _update_device_buttons(hass, entry, device_name, button)
+                
             else:
-                _LOGGER.error("Не удалось сохранить IR-код для %s - %s", device_name, button)
-                # Создаем уведомление об ошибке
-                await async_create_notification(
-                    hass,
-                    f"Не удалось сохранить ИК-код для устройства '{device_name}', кнопки '{button}'",
-                    "IR Remote: Ошибка",
-                    f"{DOMAIN}_error"
-                )
+                _LOGGER.error("❌ Не удалось сохранить IR-код для %s - %s", device_name, button)
 
         
         # Регистрируем обработчик события
         hass.bus.async_listen(f"{DOMAIN}_ir_code_learned", handle_ir_code_learned)
-        _LOGGER.info("Event handler registered")
+        _LOGGER.info("✅ Обработчик событий зарегистрирован")
         
         # Настраиваем обработчик событий ZHA
         async def handle_zha_event(event):
@@ -574,7 +543,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 endpoint_id == entry.data.get(CONF_ENDPOINT) and
                 cluster_id == entry.data.get(CONF_CLUSTER)):
                 
-                _LOGGER.debug("Получено событие ZHA от ИК-устройства: command=%s, args=%s", command, args)
+                _LOGGER.info("🎯 Получено событие ZHA от ИК-устройства: command=%s, args=%s", command, args)
                 
                 # Обрабатываем полученный ИК-код
                 if "code" in args:
@@ -582,60 +551,56 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     device_name = args.get("device", "unknown")
                     button_name = args.get("button", "unknown")
                     
-                    _LOGGER.info("Получен ИК-код от устройства: device=%s, button=%s", device_name, button_name)
+                    _LOGGER.info("📥 Получен ИК-код от устройства: device=%s, button=%s, code_len=%d", 
+                               device_name, button_name, len(ir_code))
                     
                     # Генерируем событие для сохранения кода
+                    _LOGGER.debug("🚀 Генерация события для сохранения кода...")
                     hass.bus.async_fire(f"{DOMAIN}_ir_code_learned", {
                         "device": device_name,
                         "button": button_name,
                         "code": ir_code
                     })
+                    _LOGGER.debug("✅ Событие сгенерировано")
                 else:
                     _LOGGER.warning("❌ НЕТ КОДА В ARGS: %s", args)
             else:
-                _LOGGER.debug("⏭️ СОБЫТИЕ НЕ ОТ НАШЕГО УСТРОЙСТВА")
+                _LOGGER.debug("⏭️ СОБЫТИЕ НЕ ОТ НАШЕГО УСТРОЙСТВА (ieee=%s vs %s, endpoint=%s vs %s, cluster=%s vs %s)", 
+                            device_ieee, expected_ieee, endpoint_id, expected_endpoint, cluster_id, expected_cluster)
         
         # Регистрируем обработчик событий ZHA
         zha_listener = hass.bus.async_listen("zha_event", handle_zha_event)
         hass.data[DOMAIN]["zha_listener"] = zha_listener
-        _LOGGER.info("ZHA event handler registered")
+        _LOGGER.info("✅ ZHA обработчик событий зарегистрирован")
         
         # Регистрация сервисов
         await _register_services(hass)
-        _LOGGER.info("Services registered")
+        _LOGGER.info("✅ Сервисы зарегистрированы")
         
         # Настраиваем платформы ПОСЛЕ всех других компонентов
-        _LOGGER.info("Setting up platforms: %s", PLATFORMS)
+        _LOGGER.info("🔧 Настройка платформ: %s", PLATFORMS)
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-        _LOGGER.info("Platforms setup completed")
+        _LOGGER.info("✅ Платформы настроены")
         
         # Даём время сущностям инициализироваться и принудительно обновляем координатор
         async def final_update():
             await asyncio.sleep(3)  # Увеличиваем время ожидания
-            _LOGGER.info("Performing final coordinator update...")
+            _LOGGER.info("🔄 Выполнение финального обновления координатора...")
             
             try:
                 await coordinator.async_refresh()
-                _LOGGER.info("Final coordinator update completed successfully")
-                
-                # Создаем уведомление об успешной настройке
-                await async_create_notification(
-                    hass,
-                    "ИК-пульт успешно настроен и готов к использованию!",
-                    "IR Remote: Настройка завершена",
-                    f"{DOMAIN}_ready"
-                )
+                _LOGGER.info("✅ Финальное обновление координатора завершено успешно")
             except Exception as e:
-                _LOGGER.error("Error in final coordinator update: %s", e)
+                _LOGGER.error("❌ Ошибка в финальном обновлении координатора: %s", e)
         
         hass.async_create_task(final_update())
         
-        _LOGGER.info("IR Remote настроен успешно!")
+        _LOGGER.info("🎉 IR Remote настроен успешно!")
         
         return True
         
     except Exception as e:
-        _LOGGER.error("Error setting up IR Remote: %s", e, exc_info=True)
+        _LOGGER.error("❌ Ошибка настройки IR Remote: %s", e, exc_info=True)
         
         # Очищаем данные при ошибке
         if DOMAIN in hass.data:
@@ -646,12 +611,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_register_ir_remote_device(hass: HomeAssistant, entry: ConfigEntry):
     """Регистрация устройства ИК-пульта в реестре устройств."""
-    _LOGGER.info("=== Registering IR Remote device ===")
+    _LOGGER.info("=== 📱 РЕГИСТРАЦИЯ IR REMOTE УСТРОЙСТВА ===")
     
     device_registry = dr.async_get(hass)
     entry_id = entry.entry_id
     
-    _LOGGER.info("Registering device with entry_id: %s", entry_id)
+    _LOGGER.info("📋 Регистрация устройства с entry_id: %s", entry_id)
     
     # Получаем информацию о ZHA устройстве
     zha_device_info = await get_zha_device_info(hass, entry.data.get(CONF_IEEE))
@@ -667,9 +632,9 @@ async def async_register_ir_remote_device(hass: HomeAssistant, entry: ConfigEntr
         hw_version=zha_device_info.get("hw_version"),
     )
     
-    _LOGGER.info("Device registered successfully")
-    _LOGGER.info("Device ID: %s", device.id)
-    _LOGGER.info("Device identifiers: %s", device.identifiers)
+    _LOGGER.info("✅ Устройство зарегистрировано успешно")
+    _LOGGER.info("📋 Device ID: %s", device.id)
+    _LOGGER.info("📋 Device identifiers: %s", device.identifiers)
     
     return device
 
@@ -689,7 +654,7 @@ async def get_zha_device_info(hass: HomeAssistant, ieee: str) -> dict:
         if result and "devices" in result:
             for device in result["devices"]:
                 if device.get("ieee") == ieee:
-                    _LOGGER.debug("Found ZHA device info for %s: %s", ieee, device)
+                    _LOGGER.debug("📋 Найдена информация о ZHA устройстве для %s: %s", ieee, device)
                     return {
                         "manufacturer": device.get("manufacturer"),
                         "model": device.get("model"),
@@ -697,7 +662,7 @@ async def get_zha_device_info(hass: HomeAssistant, ieee: str) -> dict:
                         "hw_version": device.get("hw_version"),
                     }
     except Exception as e:
-        _LOGGER.debug("Could not get ZHA device info: %s", e)
+        _LOGGER.debug("⚠️ Не удалось получить информацию о ZHA устройстве: %s", e)
     
     return {}
 
@@ -769,7 +734,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         schema=IMPORT_CONFIG_SCHEMA
     )
     
-    _LOGGER.info("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
+    _LOGGER.info("✅ Зарегистрированы сервисы: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
                 DOMAIN, SERVICE_LEARN_CODE, 
                 DOMAIN, SERVICE_SEND_CODE,
                 DOMAIN, SERVICE_SEND_COMMAND,
@@ -783,7 +748,7 @@ async def _register_services(hass: HomeAssistant) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.info("Unloading IR Remote entry: %s", entry.entry_id)
+    _LOGGER.info("🗑️ Выгрузка IR Remote entry: %s", entry.entry_id)
     
     # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
@@ -799,10 +764,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Remove event listeners
         if DOMAIN in hass.data and "zha_listener" in hass.data[DOMAIN]:
             hass.data[DOMAIN]["zha_listener"]()
-            _LOGGER.debug("Removed ZHA event listener")
+            _LOGGER.debug("✅ Удален ZHA обработчик событий")
         
         # Remove data
         hass.data.pop(DOMAIN, None)
     
-    _LOGGER.info("IR Remote entry unloaded: %s", unload_ok)
+    _LOGGER.info("✅ IR Remote entry выгружен: %s", unload_ok)
     return unload_ok
