@@ -119,12 +119,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("ZHA integration not found")
         raise ConfigEntryNotReady("ZHA integration not available")
     
-    # Skip setup for temporary config flow entries
-    if entry.data.get("action") in ["device_added", "command_learning_started"]:
-        # This is a temporary entry from config flow, remove it
+    # Handle special actions from config flow
+    action = entry.data.get("action")
+    if action:
+        _LOGGER.info("Processing action: %s", action)
+        
+        if action == "device_added":
+            await _handle_device_addition(hass, entry)
+        elif action == "command_learning_started":
+            await _handle_command_learning_start(hass, entry)
+        elif action == "data_viewed":
+            pass  # No action needed for viewing data
+        
+        # Remove this temporary entry after processing
         await hass.config_entries.async_remove(entry.entry_id)
         return True
     
+    # This is a real controller entry
     # Initialize storage for this controller
     storage = IRRemoteStorage(hass)
     await storage.async_load()
@@ -170,44 +181,97 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def _handle_command_learning(hass: HomeAssistant, entry: ConfigEntry, storage: IRRemoteStorage) -> None:
-    """Handle command learning flow."""
+async def _handle_device_addition(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle device addition from config flow."""
     controller_id = entry.data[CONF_CONTROLLER_ID]
-    device_id = entry.data["device_id"]
-    command_id = entry.data["command_id"]
+    device_name = entry.data[CONF_DEVICE_NAME]
+    
+    _LOGGER.info("Adding device: %s to controller %s", device_name, controller_id)
+    
+    # Get the controller's storage
+    entry_data = hass.data[DOMAIN].get(controller_id)
+    if not entry_data:
+        _LOGGER.error("Controller %s not found for device addition", controller_id)
+        return
+    
+    storage = entry_data["storage"]
+    
+    # Generate device ID
+    device_id = device_name.lower().replace(" ", "_").replace("-", "_")
+    
+    # Add device
+    success = await storage.async_add_device(controller_id, device_id, device_name)
+    if success:
+        _LOGGER.info("Successfully added device: %s", device_name)
+        # Reload the controller config entry to create new entities
+        config_entry = hass.config_entries.async_get_entry(controller_id)
+        if config_entry:
+            await hass.config_entries.async_reload(controller_id)
+    else:
+        _LOGGER.error("Failed to add device: %s", device_name)
+
+
+async def _handle_command_learning_start(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle command learning start from config flow."""
+    controller_id = entry.data[CONF_CONTROLLER_ID]
+    device_name = entry.data[CONF_DEVICE_NAME]
     command_name = entry.data[CONF_COMMAND_NAME]
     
-    _LOGGER.info("Starting command learning: %s - %s", device_id, command_name)
+    _LOGGER.info("Starting command learning: %s - %s for controller %s", device_name, command_name, controller_id)
     
-    # Start learning process
+    # Get the controller's storage
+    entry_data = hass.data[DOMAIN].get(controller_id)
+    if not entry_data:
+        _LOGGER.error("Controller %s not found for command learning", controller_id)
+        return
+    
+    storage = entry_data["storage"]
+    
+    # Generate IDs
+    device_id = device_name.lower().replace(" ", "_").replace("-", "_")
+    command_id = command_name.lower().replace(" ", "_").replace("-", "_")
+    
+    # Ensure device exists
+    devices = storage.get_devices(controller_id)
+    device_exists = any(d["id"] == device_id for d in devices)
+    
+    if not device_exists:
+        # Add device first
+        success = await storage.async_add_device(controller_id, device_id, device_name)
+        if not success:
+            _LOGGER.error("Failed to create device for command learning")
+            return
+    
+    # Get controller data for ZHA command
     controller = storage.get_controller(controller_id)
-    if controller:
-        try:
-            await hass.services.async_call(
-                "zha",
-                "issue_zigbee_cluster_command",
-                {
-                    "ieee": controller["ieee"],
-                    "endpoint_id": controller["endpoint_id"],
-                    "cluster_id": controller["cluster_id"],
-                    "cluster_type": DEFAULT_CLUSTER_TYPE,
-                    "command": ZHA_COMMAND_LEARN,
-                    "command_type": DEFAULT_COMMAND_TYPE,
-                    "params": {
-                        "controller_id": controller_id,
-                        "device_id": device_id,
-                        "command_id": command_id,
-                        "command_name": command_name
-                    }
-                },
-                blocking=True
-            )
-            _LOGGER.info("Learning command sent to ZHA device")
-        except Exception as e:
-            _LOGGER.error("Failed to start learning: %s", e)
+    if not controller:
+        _LOGGER.error("Controller data not found: %s", controller_id)
+        return
     
-    # Remove this temporary entry
-    await hass.config_entries.async_remove(entry.entry_id)
+    try:
+        # Send ZHA command to start learning
+        await hass.services.async_call(
+            "zha",
+            "issue_zigbee_cluster_command",
+            {
+                "ieee": controller["ieee"],
+                "endpoint_id": controller["endpoint_id"],
+                "cluster_id": controller["cluster_id"],
+                "cluster_type": DEFAULT_CLUSTER_TYPE,
+                "command": ZHA_COMMAND_LEARN,
+                "command_type": DEFAULT_COMMAND_TYPE,
+                "params": {
+                    "controller_id": controller_id,
+                    "device_id": device_id,
+                    "command_id": command_id,
+                    "command_name": command_name
+                }
+            },
+            blocking=True
+        )
+        _LOGGER.info("Learning command sent for %s - %s", device_name, command_name)
+    except Exception as e:
+        _LOGGER.error("Failed to start learning: %s", e)
 
 
 async def _register_services(hass: HomeAssistant) -> None:
