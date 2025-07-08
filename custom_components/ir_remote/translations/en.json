@@ -34,6 +34,13 @@
                     "controller_id": "IR Controller"
                 }
             },
+            "select_controller_for_device": {
+                "title": "Select IR Controller", 
+                "description": "Choose IR controller to add device to.",
+                "data": {
+                    "controller_id": "IR Controller"
+                }
+            },
             "add_device": {
                 "title": "Add Device",
                 "description": "Add a new virtual device to controller \"{controller_name}\".",

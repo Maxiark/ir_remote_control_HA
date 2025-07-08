@@ -34,6 +34,13 @@
                     "controller_id": "ИК-пульт"
                 }
             },
+            "select_controller_for_device": {
+                "title": "Выбор ИК-пульта",
+                "description": "Выберите ИК-пульт для добавления устройства.",
+                "data": {
+                    "controller_id": "ИК-пульт"
+                }
+            },
             "add_device": {
                 "title": "Добавить устройство",
                 "description": "Добавьте новое виртуальное устройство к пульту \"{controller_name}\".",
