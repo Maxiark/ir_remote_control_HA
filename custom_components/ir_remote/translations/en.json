@@ -87,9 +87,13 @@
                 "title": "Data Management",
                 "description": "Current IR Remote status:\n\n• Controllers: {controllers_count}\n• Devices: {devices_count}\n• Commands: {commands_count}\n\nUse Developer Tools → Services for programmatic device and command management."
             },
-            "manage_info": {
-                "title": "Data Information",
-                "description": "Current IR Remote status:\n\n• Controllers: {controllers_count}\n• Devices: {devices_count}\n• Commands: {commands_count}\n\nFor data management use:\n- Developer Tools → Services\n- Integration configuration\n- Device buttons in interface"
+            "device_added": {
+                "title": "Device Added",
+                "description": "Device \"{device_name}\" successfully added!\n\nIntegration will be reloaded to update the button list.\n\nYou can now add commands for this device through integration configuration."
+            },
+            "learning_started": {
+                "title": "Learning Started",
+                "description": "Learning command \"{command_name}\" has started!\n\nNow press the desired button on the original remote.\n\nThe command will be automatically saved after receiving the IR signal."
             }
         },
         "error": {
