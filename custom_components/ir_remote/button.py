@@ -29,13 +29,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up IR Remote button entities."""
-    _LOGGER.info("Setting up IR Remote buttons for: %s", config_entry.title)
+    _LOGGER.info("Button platform: Starting setup for: %s", config_entry.title)
     
     # Get storage for this controller
     entry_data = hass.data[DOMAIN].get(config_entry.entry_id)
     if not entry_data:
-        _LOGGER.error("No entry data found for %s", config_entry.entry_id)
+        _LOGGER.error("Button platform: No entry data found for %s", config_entry.entry_id)
         return
+    
+    _LOGGER.info("Button platform: Got entry data")
     
     storage: IRRemoteStorage = entry_data["storage"]
     controller_id = config_entry.entry_id
@@ -43,20 +45,22 @@ async def async_setup_entry(
     # Get controller data
     controller = storage.get_controller(controller_id)
     if not controller:
-        _LOGGER.warning("No controller data found for %s", controller_id)
+        _LOGGER.warning("Button platform: No controller data found for %s", controller_id)
         return
+    
+    _LOGGER.info("Button platform: Got controller data")
     
     buttons: List[ButtonEntity] = []
     
     # Get all devices for this controller
     devices = storage.get_devices(controller_id)
-    _LOGGER.debug("Found %d devices for controller %s", len(devices), controller_id)
+    _LOGGER.info("Button platform: Found %d devices for controller %s", len(devices), controller_id)
     
     for device in devices:
         device_id = device["id"]
         device_name = device["name"]
         
-        _LOGGER.debug("Processing device: %s (%s)", device_name, device_id)
+        _LOGGER.debug("Button platform: Processing device: %s (%s)", device_name, device_id)
         
         # Create "Add Command" button for this device
         add_command_button = IRRemoteAddCommandButton(
@@ -67,11 +71,11 @@ async def async_setup_entry(
             device_name=device_name,
         )
         buttons.append(add_command_button)
-        _LOGGER.debug("Created add command button for device %s", device_name)
+        _LOGGER.debug("Button platform: Created add command button for device %s", device_name)
         
         # Get all commands for this device
         commands = storage.get_commands(controller_id, device_id)
-        _LOGGER.debug("Found %d commands for device %s", len(commands), device_name)
+        _LOGGER.debug("Button platform: Found %d commands for device %s", len(commands), device_name)
         
         for command in commands:
             command_id = command["id"]
@@ -90,12 +94,14 @@ async def async_setup_entry(
                 command_code=command_code,
             )
             buttons.append(command_button)
-            _LOGGER.debug("Created command button: %s - %s", device_name, command_name)
+            _LOGGER.debug("Button platform: Created command button: %s - %s", device_name, command_name)
     
-    _LOGGER.info("Created %d buttons for controller %s", len(buttons), controller_id)
+    _LOGGER.info("Button platform: Created %d buttons for controller %s", len(buttons), controller_id)
     
     # Add all buttons
+    _LOGGER.info("Button platform: Adding entities to HA...")
     async_add_entities(buttons)
+    _LOGGER.info("Button platform: Setup completed for %s", config_entry.title)
 
 
 class IRRemoteCommandButton(ButtonEntity):
