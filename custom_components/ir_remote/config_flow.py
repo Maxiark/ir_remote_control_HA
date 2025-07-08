@@ -27,8 +27,11 @@ from .const import (
     ACTION_ADD_COMMAND,
     ACTION_MANAGE,
     STEP_INIT,
+    STEP_SELECT_CONTROLLER,
     STEP_ADD_CONTROLLER,
     STEP_ADD_DEVICE,
+    STEP_SELECT_CONTROLLER_FOR_COMMAND,
+    STEP_SELECT_DEVICE_FOR_COMMAND,
     STEP_ADD_COMMAND,
     STEP_LEARN_COMMAND,
     STEP_MANAGE,
@@ -102,6 +105,10 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self.flow_data: Dict[str, Any] = {}
         self.storage: IRRemoteStorage = None
+    
+    async def async_step_user(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Handle a flow initialized by the user."""
+        return await self.async_step_init(user_input)
     
     async def async_step_init(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step."""
@@ -236,7 +243,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         
         return self.async_show_form(
-            step_id="select_controller",
+            step_id=STEP_SELECT_CONTROLLER,
             data_schema=vol.Schema({
                 vol.Required(CONF_CONTROLLER_ID): vol.In(controller_options)
             })
@@ -304,7 +311,19 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     
     async def async_step_select_controller_for_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Select controller and device for adding command."""
-        controllers = self.storage.get_controllers()
+        if self.storage is None:
+            self.storage = IRRemoteStorage(self.hass)
+            try:
+                await self.storage.async_load()
+            except Exception:
+                return self.async_abort(reason=ERROR_NO_DEVICE)
+        
+        controllers = []
+        try:
+            controllers = self.storage.get_controllers()
+        except Exception:
+            pass
+            
         if not controllers:
             return self.async_abort(reason=ERROR_NO_DEVICE)
         
@@ -313,7 +332,12 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.flow_data[CONF_CONTROLLER_ID] = controller_id
             
             # Get devices for this controller
-            devices = self.storage.get_devices(controller_id)
+            devices = []
+            try:
+                devices = self.storage.get_devices(controller_id)
+            except Exception:
+                pass
+                
             if not devices:
                 return self.async_abort(reason="no_devices")
             
@@ -325,13 +349,12 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Multiple devices - show selection
             return await self.async_step_select_device_for_command()
         
-        controller_options = {
-            controller["id"]: f"{controller['name']} ({controller['device_count']} устройств)"
-            for controller in controllers
-        }
+        controller_options = {}
+        for controller in controllers:
+            controller_options[controller["id"]] = f"{controller['name']} ({controller['device_count']} устройств)"
         
         return self.async_show_form(
-            step_id="select_controller_for_command",
+            step_id=STEP_SELECT_CONTROLLER_FOR_COMMAND,
             data_schema=vol.Schema({
                 vol.Required(CONF_CONTROLLER_ID): vol.In(controller_options)
             })
@@ -343,16 +366,25 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self.flow_data["device_id"] = user_input["device_id"]
             return await self.async_step_add_command()
         
-        controller_id = self.flow_data[CONF_CONTROLLER_ID]
-        devices = self.storage.get_devices(controller_id)
+        controller_id = self.flow_data.get(CONF_CONTROLLER_ID)
+        if not controller_id:
+            return self.async_abort(reason=ERROR_NO_DEVICE)
         
-        device_options = {
-            device["id"]: f"{device['name']} ({device['command_count']} команд)"
-            for device in devices
-        }
+        devices = []
+        try:
+            devices = self.storage.get_devices(controller_id)
+        except Exception:
+            pass
+            
+        if not devices:
+            return self.async_abort(reason="no_devices")
+        
+        device_options = {}
+        for device in devices:
+            device_options[device["id"]] = f"{device['name']} ({device['command_count']} команд)"
         
         return self.async_show_form(
-            step_id="select_device_for_command",
+            step_id=STEP_SELECT_DEVICE_FOR_COMMAND,
             data_schema=vol.Schema({
                 vol.Required("device_id"): vol.In(device_options)
             })
@@ -366,21 +398,25 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             command_name = user_input[CONF_COMMAND_NAME].strip()
             
             # Validate command name
-            if not self.storage._validate_name(command_name):
+            if not self.storage or not self.storage._validate_name(command_name):
                 errors[CONF_COMMAND_NAME] = ERROR_INVALID_NAME
             else:
                 # Generate command ID from name
                 command_id = command_name.lower().replace(" ", "_").replace("-", "_")
                 
                 # Check if command already exists
-                controller_id = self.flow_data[CONF_CONTROLLER_ID]
-                device_id = self.flow_data["device_id"]
-                commands = self.storage.get_commands(controller_id, device_id)
+                controller_id = self.flow_data.get(CONF_CONTROLLER_ID)
+                device_id = self.flow_data.get("device_id")
                 
-                for command in commands:
-                    if command["id"] == command_id:
-                        errors[CONF_COMMAND_NAME] = ERROR_COMMAND_EXISTS
-                        break
+                if controller_id and device_id:
+                    try:
+                        commands = self.storage.get_commands(controller_id, device_id)
+                        for command in commands:
+                            if command["id"] == command_id:
+                                errors[CONF_COMMAND_NAME] = ERROR_COMMAND_EXISTS
+                                break
+                    except Exception:
+                        pass
                 
                 if not errors:
                     # Store command info and proceed to learning
@@ -388,8 +424,25 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self.flow_data["command_id"] = command_id
                     return await self.async_step_learn_command()
         
-        controller = self.storage.get_controller(self.flow_data[CONF_CONTROLLER_ID])
-        device = self.storage.get_device(self.flow_data[CONF_CONTROLLER_ID], self.flow_data["device_id"])
+        controller_name = "Unknown"
+        device_name = "Unknown"
+        
+        if self.storage:
+            try:
+                controller_id = self.flow_data.get(CONF_CONTROLLER_ID)
+                device_id = self.flow_data.get("device_id")
+                
+                if controller_id:
+                    controller = self.storage.get_controller(controller_id)
+                    if controller:
+                        controller_name = controller["name"]
+                
+                if controller_id and device_id:
+                    device = self.storage.get_device(controller_id, device_id)
+                    if device:
+                        device_name = device["name"]
+            except Exception:
+                pass
         
         return self.async_show_form(
             step_id=STEP_ADD_COMMAND,
@@ -398,8 +451,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }),
             errors=errors,
             description_placeholders={
-                "controller_name": controller["name"] if controller else "Unknown",
-                "device_name": device["name"] if device else "Unknown"
+                "controller_name": controller_name,
+                "device_name": device_name
             }
         )
     
@@ -443,22 +496,40 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_manage(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle management of existing data."""
         # This could show statistics and options for bulk operations
-        controllers = self.storage.get_controllers()
+        if self.storage is None:
+            self.storage = IRRemoteStorage(self.hass)
+            try:
+                await self.storage.async_load()
+            except Exception:
+                pass
         
-        total_devices = sum(controller["device_count"] for controller in controllers)
+        controllers = []
+        try:
+            controllers = self.storage.get_controllers() if self.storage else []
+        except Exception:
+            pass
+        
+        total_devices = 0
         total_commands = 0
         
-        for controller in controllers:
-            controller_id = controller["id"]
-            devices = self.storage.get_devices(controller_id)
-            for device in devices:
-                device_id = device["id"]
-                commands = self.storage.get_commands(controller_id, device_id)
-                total_commands += len(commands)
+        try:
+            total_devices = sum(controller.get("device_count", 0) for controller in controllers)
+            
+            for controller in controllers:
+                controller_id = controller.get("id")
+                if controller_id and self.storage:
+                    devices = self.storage.get_devices(controller_id)
+                    for device in devices:
+                        device_id = device.get("id")
+                        if device_id:
+                            commands = self.storage.get_commands(controller_id, device_id)
+                            total_commands += len(commands)
+        except Exception:
+            pass
         
         return self.async_create_entry(
             title="Данные просмотрены",
-            data={},
+            data={"action": "data_viewed"},
             description_placeholders={
                 "controllers_count": str(len(controllers)),
                 "devices_count": str(total_devices),
