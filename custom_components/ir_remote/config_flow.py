@@ -1,6 +1,7 @@
 """Config flow for IR Remote integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict
 
@@ -322,6 +323,58 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
     
+    async def _read_learned_code_after_delay(self, controller: dict, controller_id: str, device_id: str, command_id: str, command_name: str) -> None:
+        """Read learned IR code after delay."""
+        await asyncio.sleep(10)  # Wait for learning to complete
+        
+        try:
+            # Read the learned IR code from attribute 0
+            await self.hass.services.async_call(
+                "zha_toolkit",
+                "attr_read",
+                {
+                    "ieee": controller["ieee"],
+                    "endpoint": controller["endpoint_id"],
+                    "cluster": controller["cluster_id"],
+                    "attribute": 0,
+                    "state_id": f"ir_remote.learned_code_{controller_id}",
+                    "allow_create": True,
+                    "use_cache": False
+                },
+                blocking=True
+            )
+            
+            # Wait for state to be updated
+            await asyncio.sleep(1)
+            
+            # Retrieve and save the code
+            state_id = f"ir_remote.learned_code_{controller_id}"
+            state = self.hass.states.get(state_id)
+            
+            if state and state.state:
+                ir_code = state.state
+                _LOGGER.info("Retrieved learned IR code (length: %d) for %s - %s", len(ir_code), device_id, command_name)
+                
+                # Save the learned code
+                success = await self.storage.async_add_command(
+                    controller_id, device_id, command_id, command_name, ir_code
+                )
+                
+                if success:
+                    _LOGGER.info("Successfully saved learned command: %s - %s", device_id, command_name)
+                    # Reload config entry to update button entity
+                    await self.hass.config_entries.async_reload(controller_id)
+                    
+                    # Clean up temporary state
+                    self.hass.states.async_remove(state_id)
+                else:
+                    _LOGGER.error("Failed to save learned command: %s - %s", device_id, command_name)
+            else:
+                _LOGGER.warning("No learned code found in state %s", state_id)
+                
+        except Exception as e:
+            _LOGGER.error("Error reading learned code: %s", e)
+    
     async def _reload_entry_after_delay(self, controller_id: str) -> None:
         """Reload entry after a short delay."""
         import asyncio
@@ -536,20 +589,15 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "cluster_type": "in",
                     "command": 1,  # ZHA_COMMAND_LEARN
                     "command_type": "server",
-                    "params": {
-                        "controller_id": controller_id,
-                        "device_id": device_id,
-                        "command_id": command_id,
-                        "command_name": command_name
-                    }
+                    "params": {"on_off": True}  # Required parameter for learning mode
                 },
                 blocking=True
             )
             _LOGGER.info("Learning command sent directly for %s - %s", device_id, command_name)
             
-            # Schedule reload to create button entity
+            # Schedule code reading after delay
             self.hass.async_create_task(
-                self._reload_entry_after_delay(controller_id)
+                self._read_learned_code_after_delay(controller, controller_id, device_id, command_id, command_name)
             )
             
         except Exception as e:

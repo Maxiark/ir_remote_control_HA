@@ -199,6 +199,13 @@ async def _register_services(hass: HomeAssistant) -> None:
             _LOGGER.error("Controller data not found: %s", controller_id)
             return
         
+        # Ensure command exists in storage (create if needed)
+        existing_code = storage.get_command_code(controller_id, device_id, command_id)
+        if existing_code is None:
+            # Create command with empty code
+            await storage.async_add_command(controller_id, device_id, command_id, command_id.title(), "")
+            _LOGGER.info("Created command placeholder: %s - %s", device_id, command_id)
+        
         try:
             # Send ZHA command to start learning
             await hass.services.async_call(
@@ -211,15 +218,41 @@ async def _register_services(hass: HomeAssistant) -> None:
                     "cluster_type": DEFAULT_CLUSTER_TYPE,
                     "command": ZHA_COMMAND_LEARN,
                     "command_type": DEFAULT_COMMAND_TYPE,
-                    "params": {
-                        "controller_id": controller_id,
-                        "device_id": device_id,
-                        "command_id": command_id
-                    }
+                    "params": {"on_off": True}  # Required parameter for learning mode
                 },
                 blocking=True
             )
             _LOGGER.info("Learning command sent for %s - %s", device_id, command_id)
+            
+            # Wait for learning to complete
+            await asyncio.sleep(10)
+            
+            # Read the learned IR code from attribute 0
+            try:
+                await hass.services.async_call(
+                    "zha_toolkit",
+                    "attr_read",
+                    {
+                        "ieee": controller["ieee"],
+                        "endpoint": controller["endpoint_id"],
+                        "cluster": controller["cluster_id"],
+                        "attribute": 0,
+                        "state_id": f"ir_remote.learned_code_{controller_id}",
+                        "allow_create": True,
+                        "use_cache": False
+                    },
+                    blocking=True
+                )
+                _LOGGER.info("Initiated IR code read for %s - %s", device_id, command_id)
+                
+                # Schedule code retrieval after a short delay
+                hass.async_create_task(
+                    _retrieve_learned_code(hass, controller_id, device_id, command_id, storage)
+                )
+                
+            except Exception as e:
+                _LOGGER.error("Failed to read IR code: %s", e)
+                
         except Exception as e:
             _LOGGER.error("Failed to send learning command: %s", e)
             raise HomeAssistantError(f"Failed to start learning: {e}") from e
@@ -408,6 +441,40 @@ async def _register_services(hass: HomeAssistant) -> None:
     _LOGGER.info("All IR Remote services registered successfully")
 
 
+async def _retrieve_learned_code(hass: HomeAssistant, controller_id: str, device_id: str, command_id: str, storage: IRRemoteStorage) -> None:
+    """Retrieve learned IR code from state and save it."""
+    await asyncio.sleep(1)  # Wait for state to be updated
+    
+    try:
+        state_id = f"ir_remote.learned_code_{controller_id}"
+        state = hass.states.get(state_id)
+        
+        if state and state.state:
+            ir_code = state.state
+            _LOGGER.info("Retrieved learned IR code (length: %d) for %s - %s", len(ir_code), device_id, command_id)
+            
+            # Save the learned code
+            command_name = command_id.replace("_", " ").title()
+            success = await storage.async_add_command(
+                controller_id, device_id, command_id, command_name, ir_code
+            )
+            
+            if success:
+                _LOGGER.info("Successfully saved learned command: %s - %s", device_id, command_name)
+                # Reload config entry to update button entity
+                await hass.config_entries.async_reload(controller_id)
+                
+                # Clean up temporary state
+                hass.states.async_remove(state_id)
+            else:
+                _LOGGER.error("Failed to save learned command: %s - %s", device_id, command_name)
+        else:
+            _LOGGER.warning("No learned code found in state %s", state_id)
+            
+    except Exception as e:
+        _LOGGER.error("Error retrieving learned code: %s", e)
+
+
 async def _setup_zha_event_handler(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Setup ZHA event handler for IR learning."""
     
@@ -418,38 +485,18 @@ async def _setup_zha_event_handler(hass: HomeAssistant, entry: ConfigEntry) -> N
         cluster_id = event.data.get("cluster_id")
         args = event.data.get("args", {})
         
+        _LOGGER.debug("ZHA event received: ieee=%s, endpoint=%s, cluster=%s, args=%s", 
+                     device_ieee, endpoint_id, cluster_id, args)
+        
         # Check if this event is from our controller
         if (device_ieee == entry.data[CONF_IEEE] and
             endpoint_id == entry.data.get(CONF_ENDPOINT, 1) and
             cluster_id == entry.data.get(CONF_CLUSTER, 57348)):
             
-            _LOGGER.info("Received ZHA event from IR controller")
+            _LOGGER.info("Received ZHA event from IR controller: %s", args)
             
-            # Check if this is a learned IR code
-            if "code" in args:
-                controller_id = args.get("controller_id", entry.entry_id)
-                device_id = args.get("device_id")
-                command_id = args.get("command_id")
-                command_name = args.get("command_name", command_id)
-                ir_code = args["code"]
-                
-                _LOGGER.info("Learned IR code: %s - %s (length: %d)", 
-                           device_id, command_name, len(ir_code))
-                
-                # Save the learned code
-                entry_data = hass.data[DOMAIN].get(controller_id)
-                if entry_data:
-                    storage = entry_data["storage"]
-                    success = await storage.async_add_command(
-                        controller_id, device_id, command_id, command_name, ir_code
-                    )
-                    
-                    if success:
-                        _LOGGER.info("Successfully saved learned command")
-                        # Reload config entry to create button entity
-                        await hass.config_entries.async_reload(controller_id)
-                    else:
-                        _LOGGER.error("Failed to save learned command")
+            # We now use attr_read instead of ZHA events for getting IR codes
+            # This handler is kept for potential future use or debugging
     
     # Register event listener
     remove_listener = hass.bus.async_listen("zha_event", handle_zha_event)
