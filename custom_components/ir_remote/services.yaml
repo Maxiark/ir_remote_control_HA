@@ -112,8 +112,6 @@ add_command:
 get_data:
   name: Получить данные
   description: Возвращает данные об ИК-пультах, устройствах и командах
-  response:
-    type: action
   fields:
     controller_id:
       name: ID пульта
