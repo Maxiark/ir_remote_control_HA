@@ -123,22 +123,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             elif action == ACTION_MANAGE:
                 return await self.async_step_manage()
         
-        # Initialize storage for checking existing controllers
-        if self.storage is None:
-            self.storage = IRRemoteStorage(self.hass)
-            try:
-                await self.storage.async_load()
-            except Exception as e:
-                _LOGGER.debug("Could not load storage in config flow: %s", e)
-                # Continue with empty storage
-        
-        # Get existing controllers for display
-        controllers = []
-        if self.storage:
-            try:
-                controllers = self.storage.get_controllers()
-            except Exception as e:
-                _LOGGER.debug("Could not get controllers: %s", e)
+        # Initialize storage and clean up orphaned data
+        controllers = await self._get_valid_controllers()
         
         # Determine available actions
         actions = {ACTION_ADD_CONTROLLER: "Добавить новый ИК-пульт"}
@@ -161,6 +147,37 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
     
+    async def _get_valid_controllers(self):
+        """Get valid controllers and clean up orphaned ones."""
+        # Initialize storage for checking existing controllers
+        if self.storage is None:
+            self.storage = IRRemoteStorage(self.hass)
+            try:
+                await self.storage.async_load()
+            except Exception as e:
+                _LOGGER.debug("Could not load storage in config flow: %s", e)
+                return []
+        
+        controllers = []
+        try:
+            all_controllers = self.storage.get_controllers()
+            # Filter out controllers that don't have corresponding config entries
+            existing_entries = {entry.entry_id for entry in self.hass.config_entries.async_entries(DOMAIN)}
+            controllers = [c for c in all_controllers if c["id"] in existing_entries]
+            
+            # Clean up orphaned controllers
+            orphaned_controllers = [c for c in all_controllers if c["id"] not in existing_entries]
+            if orphaned_controllers:
+                _LOGGER.info("Found %d orphaned controllers, cleaning up...", len(orphaned_controllers))
+                for orphaned in orphaned_controllers:
+                    await self.storage.async_remove_controller(orphaned["id"])
+                    _LOGGER.info("Removed orphaned controller: %s", orphaned["name"])
+                
+        except Exception as e:
+            _LOGGER.debug("Could not get controllers: %s", e)
+        
+        return controllers
+    
     async def async_step_add_controller(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle adding new IR controller."""
         errors = {}
@@ -175,10 +192,13 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not self.storage._validate_name(room_name):
                 errors[CONF_ROOM_NAME] = ERROR_INVALID_NAME
             else:
-                # Check if controller with this IEEE already exists
+                # Check if controller with this IEEE already exists AND has config entry
                 controllers = self.storage.get_controllers()
+                existing_entries = {entry.entry_id for entry in self.hass.config_entries.async_entries(DOMAIN)}
+                
                 for controller in controllers:
-                    if controller["ieee"] == ieee:
+                    if (controller["ieee"] == ieee and 
+                        controller["id"] in existing_entries):
                         errors[CONF_IEEE] = ERROR_DEVICE_EXISTS
                         break
                 
@@ -214,19 +234,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     
     async def async_step_select_controller_for_device(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Select controller for adding device."""
-        if self.storage is None:
-            self.storage = IRRemoteStorage(self.hass)
-            try:
-                await self.storage.async_load()
-            except Exception:
-                return self.async_abort(reason=ERROR_NO_DEVICE)
+        controllers = await self._get_valid_controllers()
         
-        controllers = []
-        try:
-            controllers = self.storage.get_controllers()
-        except Exception:
-            pass
-            
         if not controllers:
             return self.async_abort(reason=ERROR_NO_DEVICE)
         
@@ -333,7 +342,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     
     async def async_step_select_controller_for_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Select controller and device for adding command."""
-        controllers = self.storage.get_controllers()
+        controllers = await self._get_valid_controllers()
+        
         if not controllers:
             return self.async_abort(reason=ERROR_NO_DEVICE)
         
@@ -499,7 +509,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     
     async def async_step_manage(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle management of existing data."""
-        controllers = self.storage.get_controllers()
+        controllers = await self._get_valid_controllers()
         
         total_devices = sum(controller["device_count"] for controller in controllers)
         total_commands = 0

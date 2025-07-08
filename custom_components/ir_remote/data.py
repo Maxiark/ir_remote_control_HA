@@ -431,3 +431,43 @@ class IRRemoteStorage:
             self._data = backup
             _LOGGER.error("Import error: %s", e)
             return False
+
+    async def async_cleanup_orphaned_data(self, valid_controller_ids: set) -> bool:
+        """Clean up orphaned controllers that don't have config entries."""
+        await self.async_load()
+        
+        if "controllers" not in self._data:
+            return True
+        
+        cleaned_count = 0
+        controllers_to_remove = []
+        
+        for controller_id in self._data["controllers"]:
+            if controller_id not in valid_controller_ids:
+                controllers_to_remove.append(controller_id)
+        
+        for controller_id in controllers_to_remove:
+            controller_name = self._data["controllers"][controller_id].get("name", controller_id)
+            del self._data["controllers"][controller_id]
+            cleaned_count += 1
+            _LOGGER.info("Cleaned up orphaned controller: %s (%s)", controller_name, controller_id)
+        
+        if cleaned_count > 0:
+            success = await self.async_save()
+            if success:
+                _LOGGER.info("Cleaned up %d orphaned controllers", cleaned_count)
+            return success
+        
+        return True
+    
+    async def async_reset_all_data(self) -> bool:
+        """Reset all data - use with caution!"""
+        _LOGGER.warning("Resetting all IR Remote data!")
+        
+        self._data = {"controllers": {}}
+        success = await self.async_save()
+        
+        if success:
+            _LOGGER.info("All IR Remote data has been reset")
+        
+        return success
