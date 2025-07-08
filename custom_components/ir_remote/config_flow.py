@@ -291,9 +291,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 self._reload_entry_after_delay(controller_id)
                             )
                             
-                            return self.async_show_form(
-                                step_id="device_added",
-                                data_schema=vol.Schema({}),
+                            return self.async_abort(
+                                reason="device_added_success",
                                 description_placeholders={
                                     "device_name": device_name
                                 }
@@ -321,13 +320,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "controller_name": controller_name
             }
-        )
-    
-    async def async_step_device_added(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
-        """Show device added confirmation."""
-        return self.async_create_entry(
-            title="Устройство добавлено",
-            data={}
         )
     
     async def _reload_entry_after_delay(self, controller_id: str) -> None:
@@ -502,9 +494,11 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception as e:
             _LOGGER.error("Failed to start learning: %s", e)
         
-        return self.async_create_entry(
-            title="Обучение команды запущено",
-            data={}
+        return self.async_abort(
+            reason="command_learning_started",
+            description_placeholders={
+                "command_name": self.flow_data.get(CONF_COMMAND_NAME, "Unknown")
+            }
         )
     
     async def async_step_manage(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
@@ -522,9 +516,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 commands = self.storage.get_commands(controller_id, device_id)
                 total_commands += len(commands)
         
-        return self.async_create_entry(
-            title="Данные просмотрены",
-            data={},
+        return self.async_abort(
+            reason="manage_completed",
             description_placeholders={
                 "controllers_count": str(len(controllers)),
                 "devices_count": str(total_devices),

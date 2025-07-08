@@ -114,6 +114,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up IR Remote from a config entry."""
     _LOGGER.info("Setting up IR Remote entry: %s", entry.title)
     
+    # Skip setup for entries without required data (should not happen with new flow)
+    if CONF_IEEE not in entry.data:
+        _LOGGER.warning("Skipping entry without IEEE data: %s", entry.title)
+        return True
+    
     # Check ZHA availability
     if "zha" not in hass.data:
         _LOGGER.error("ZHA integration not found")
