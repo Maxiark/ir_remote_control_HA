@@ -241,25 +241,12 @@ class IRRemoteAddCommandButton(ButtonEntity):
         return "mdi:plus-circle"
     
     async def async_press(self) -> None:
-        """Handle button press - start config flow for adding command."""
+        """Handle button press - show instructions for adding command."""
         _LOGGER.info("Pressed add command button for device: %s", self._device_name)
         
-        try:
-            # Start config flow to add command
-            await self.hass.config_entries.flow.async_init(
-                DOMAIN,
-                context={
-                    "source": "add_command",
-                    "controller_id": self._controller_id,
-                    "device_id": self._device_id,
-                },
-                data={
-                    "action": "add_command",
-                    "controller_id": self._controller_id,
-                    "device_id": self._device_id,
-                }
-            )
-            _LOGGER.debug("Started config flow for adding command to %s", self._device_name)
-            
-        except Exception as e:
-            _LOGGER.error("Failed to start config flow for %s: %s", self._device_name, e)
+        # For now, just log the action
+        # Users will need to use config flow or services to add commands
+        _LOGGER.info("To add commands, use the integration configuration or Developer Tools services")
+        
+        # TODO: Future improvement - create a service call or notification
+        # For now, this is a placeholder for manual command addition

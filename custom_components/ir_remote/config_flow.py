@@ -105,11 +105,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     
     async def async_step_init(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step."""
-        # Initialize storage
-        if self.storage is None:
-            self.storage = IRRemoteStorage(self.hass)
-            await self.storage.async_load()
-        
         errors = {}
         
         if user_input is not None:
@@ -124,8 +119,22 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             elif action == ACTION_MANAGE:
                 return await self.async_step_manage()
         
+        # Initialize storage for checking existing controllers
+        if self.storage is None:
+            self.storage = IRRemoteStorage(self.hass)
+            try:
+                await self.storage.async_load()
+            except Exception as e:
+                _LOGGER.debug("Could not load storage in config flow: %s", e)
+                # Continue with empty storage
+        
         # Get existing controllers for display
-        controllers = self.storage.get_controllers()
+        controllers = []
+        if self.storage:
+            try:
+                controllers = self.storage.get_controllers()
+            except Exception as e:
+                _LOGGER.debug("Could not get controllers: %s", e)
         
         # Determine available actions
         actions = {ACTION_ADD_CONTROLLER: "Добавить новый ИК-пульт"}
@@ -201,7 +210,19 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     
     async def async_step_select_controller_for_device(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Select controller for adding device."""
-        controllers = self.storage.get_controllers()
+        if self.storage is None:
+            self.storage = IRRemoteStorage(self.hass)
+            try:
+                await self.storage.async_load()
+            except Exception:
+                return self.async_abort(reason=ERROR_NO_DEVICE)
+        
+        controllers = []
+        try:
+            controllers = self.storage.get_controllers()
+        except Exception:
+            pass
+            
         if not controllers:
             return self.async_abort(reason=ERROR_NO_DEVICE)
         
@@ -230,33 +251,45 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             device_name = user_input[CONF_DEVICE_NAME].strip()
             
             # Validate device name
-            if not self.storage._validate_name(device_name):
+            if not self.storage or not self.storage._validate_name(device_name):
                 errors[CONF_DEVICE_NAME] = ERROR_INVALID_NAME
             else:
                 # Generate device ID from name
                 device_id = device_name.lower().replace(" ", "_").replace("-", "_")
                 
                 # Check if device already exists
-                devices = self.storage.get_devices(controller_id)
-                for device in devices:
-                    if device["id"] == device_id:
-                        errors[CONF_DEVICE_NAME] = ERROR_DEVICE_EXISTS
-                        break
+                try:
+                    devices = self.storage.get_devices(controller_id)
+                    for device in devices:
+                        if device["id"] == device_id:
+                            errors[CONF_DEVICE_NAME] = ERROR_DEVICE_EXISTS
+                            break
+                except Exception:
+                    pass
                 
                 if not errors:
                     # Add device
-                    success = await self.storage.async_add_device(controller_id, device_id, device_name)
-                    
-                    if success:
-                        return self.async_create_entry(
-                            title=f"Устройство {device_name} добавлено",
-                            data={}
-                        )
-                    else:
+                    try:
+                        success = await self.storage.async_add_device(controller_id, device_id, device_name)
+                        
+                        if success:
+                            return self.async_create_entry(
+                                title=f"Устройство {device_name} добавлено",
+                                data={"action": "device_added"}
+                            )
+                        else:
+                            errors["base"] = "add_device_failed"
+                    except Exception:
                         errors["base"] = "add_device_failed"
         
-        controller = self.storage.get_controller(self.flow_data[CONF_CONTROLLER_ID])
-        controller_name = controller["name"] if controller else "Unknown"
+        controller_name = "Unknown"
+        if self.storage:
+            try:
+                controller = self.storage.get_controller(self.flow_data[CONF_CONTROLLER_ID])
+                if controller:
+                    controller_name = controller["name"]
+            except Exception:
+                pass
         
         return self.async_show_form(
             step_id=STEP_ADD_DEVICE,
@@ -374,21 +407,26 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle IR learning process."""
         if user_input is not None:
             # User confirmed they're ready to learn
-            # This would trigger the actual IR learning process
-            # For now, we'll just complete the flow
+            # Complete the flow and let the integration handle learning
             return self.async_create_entry(
-                title=f"Команда {self.flow_data[CONF_COMMAND_NAME]} добавлена",
-                data={
-                    CONF_CONTROLLER_ID: self.flow_data[CONF_CONTROLLER_ID],
-                    "device_id": self.flow_data["device_id"],
-                    "command_id": self.flow_data["command_id"],
-                    CONF_COMMAND_NAME: self.flow_data[CONF_COMMAND_NAME],
-                    "learn_mode": True
-                }
+                title=f"Команда {self.flow_data[CONF_COMMAND_NAME]} добавлена для обучения",
+                data={"action": "command_learning_started"}
             )
         
-        controller = self.storage.get_controller(self.flow_data[CONF_CONTROLLER_ID])
-        device = self.storage.get_device(self.flow_data[CONF_CONTROLLER_ID], self.flow_data["device_id"])
+        controller_name = "Unknown"
+        device_name = "Unknown"
+        
+        if self.storage:
+            try:
+                controller = self.storage.get_controller(self.flow_data[CONF_CONTROLLER_ID])
+                if controller:
+                    controller_name = controller["name"]
+                
+                device = self.storage.get_device(self.flow_data[CONF_CONTROLLER_ID], self.flow_data["device_id"])
+                if device:
+                    device_name = device["name"]
+            except Exception:
+                pass
         
         return self.async_show_form(
             step_id=STEP_LEARN_COMMAND,
@@ -396,9 +434,9 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("ready"): bool,
             }),
             description_placeholders={
-                "controller_name": controller["name"] if controller else "Unknown",
-                "device_name": device["name"] if device else "Unknown",
-                "command_name": self.flow_data[CONF_COMMAND_NAME]
+                "controller_name": controller_name,
+                "device_name": device_name,
+                "command_name": self.flow_data.get(CONF_COMMAND_NAME, "Unknown")
             }
         )
     

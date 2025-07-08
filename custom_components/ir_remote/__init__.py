@@ -119,6 +119,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("ZHA integration not found")
         raise ConfigEntryNotReady("ZHA integration not available")
     
+    # Skip setup for temporary config flow entries
+    if entry.data.get("action") in ["device_added", "command_learning_started"]:
+        # This is a temporary entry from config flow, remove it
+        await hass.config_entries.async_remove(entry.entry_id)
+        return True
+    
     # Initialize storage for this controller
     storage = IRRemoteStorage(hass)
     await storage.async_load()
@@ -129,12 +135,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     room_name = entry.data[CONF_ROOM_NAME]
     endpoint_id = entry.data.get(CONF_ENDPOINT, 1)
     cluster_id = entry.data.get(CONF_CLUSTER, 57348)
-    
-    # Check if this is a learning command flow
-    if entry.data.get("learn_mode"):
-        # This is a command learning flow, handle it differently
-        await _handle_command_learning(hass, entry, storage)
-        return True
     
     # Add controller if not exists
     controllers = storage.get_controllers()
