@@ -104,7 +104,10 @@
             "no_devices": "This controller has no devices. Add a device first."
         },
         "abort": {
-            "single_instance_allowed": "Only one instance of the integration is allowed"
+            "single_instance_allowed": "Only one instance of the integration is allowed",
+            "device_added_success": "Device successfully added! Reloading integration...",
+            "command_learning_started": "Command learning started! Now press the button on the original remote.",
+            "manage_completed": "Data reviewed. Controllers: {controllers_count}, devices: {devices_count}, commands: {commands_count}"
         }
     },
     "entity": {

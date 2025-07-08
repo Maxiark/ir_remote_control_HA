@@ -277,25 +277,28 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             for entry in self.hass.config_entries.async_entries(DOMAIN):
                                 if entry.entry_id == controller_id:
                                     _LOGGER.info("Reloading config entry %s after adding device", controller_id)
-                                    await self.hass.config_entries.async_reload(entry.entry_id)
+                                    # Schedule reload after config flow completion
+                                    self.hass.async_create_task(
+                                        self.hass.config_entries.async_reload(entry.entry_id)
+                                    )
                                     break
                             
-                            # Show success message without creating entry
-                            return self.async_show_form(
-                                step_id="device_added_success",
-                                data_schema=vol.Schema({}),
-                                description_placeholders={
-                                    "device_name": device_name,
-                                    "controller_name": self._get_controller_name(controller_id)
-                                }
-                            )
+                            # Return success without creating entry
+                            return self.async_abort(reason="device_added_success")
                         else:
                             errors["base"] = "add_device_failed"
                     except Exception as e:
                         _LOGGER.error("Error adding device: %s", e)
                         errors["base"] = "add_device_failed"
         
-        controller_name = self._get_controller_name(self.flow_data.get(CONF_CONTROLLER_ID, ""))
+        controller_name = "Unknown"
+        if self.storage:
+            try:
+                controller = self.storage.get_controller(self.flow_data[CONF_CONTROLLER_ID])
+                if controller:
+                    controller_name = controller["name"]
+            except Exception:
+                pass
         
         return self.async_show_form(
             step_id=STEP_ADD_DEVICE,
@@ -306,14 +309,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "controller_name": controller_name
             }
-        )
-    
-    async def async_step_device_added_success(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
-        """Show success message for device addition."""
-        # Complete the flow successfully
-        return self.async_create_entry(
-            title="Устройство добавлено успешно",
-            data={}
         )
     
     async def async_step_select_controller_for_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
@@ -402,11 +397,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self.flow_data["command_id"] = command_id
                     return await self.async_step_learn_command()
         
-        controller_name = self._get_controller_name(self.flow_data.get(CONF_CONTROLLER_ID, ""))
-        device_name = self._get_device_name(
-            self.flow_data.get(CONF_CONTROLLER_ID, ""), 
-            self.flow_data.get("device_id", "")
-        )
+        controller = self.storage.get_controller(self.flow_data[CONF_CONTROLLER_ID])
+        device = self.storage.get_device(self.flow_data[CONF_CONTROLLER_ID], self.flow_data["device_id"])
         
         return self.async_show_form(
             step_id=STEP_ADD_COMMAND,
@@ -415,8 +407,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }),
             errors=errors,
             description_placeholders={
-                "controller_name": controller_name,
-                "device_name": device_name
+                "controller_name": controller["name"] if controller else "Unknown",
+                "device_name": device["name"] if device else "Unknown"
             }
         )
     
@@ -427,7 +419,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             controller_id = self.flow_data[CONF_CONTROLLER_ID]
             device_id = self.flow_data["device_id"]
             command_id = self.flow_data["command_id"]
-            command_name = self.flow_data[CONF_COMMAND_NAME]
             
             # Start learning process via service
             try:
@@ -442,25 +433,27 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     blocking=False
                 )
                 
-                # Show success message
-                return self.async_show_form(
-                    step_id="command_learning_started",
-                    data_schema=vol.Schema({}),
-                    description_placeholders={
-                        "command_name": command_name,
-                        "device_name": self._get_device_name(controller_id, device_id)
-                    }
-                )
+                # Return success without creating entry
+                return self.async_abort(reason="command_learning_started")
                 
             except Exception as e:
                 _LOGGER.error("Failed to start learning: %s", e)
                 return self.async_abort(reason="learn_failed")
         
-        controller_name = self._get_controller_name(self.flow_data.get(CONF_CONTROLLER_ID, ""))
-        device_name = self._get_device_name(
-            self.flow_data.get(CONF_CONTROLLER_ID, ""), 
-            self.flow_data.get("device_id", "")
-        )
+        controller_name = "Unknown"
+        device_name = "Unknown"
+        
+        if self.storage:
+            try:
+                controller = self.storage.get_controller(self.flow_data[CONF_CONTROLLER_ID])
+                if controller:
+                    controller_name = controller["name"]
+                
+                device = self.storage.get_device(self.flow_data[CONF_CONTROLLER_ID], self.flow_data["device_id"])
+                if device:
+                    device_name = device["name"]
+            except Exception:
+                pass
         
         return self.async_show_form(
             step_id=STEP_LEARN_COMMAND,
@@ -474,15 +467,9 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
     
-    async def async_step_command_learning_started(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
-        """Show learning started message."""
-        return self.async_create_entry(
-            title="Обучение команды запущено",
-            data={}
-        )
-    
     async def async_step_manage(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle management of existing data."""
+        # This could show statistics and options for bulk operations
         controllers = self.storage.get_controllers()
         
         total_devices = sum(controller["device_count"] for controller in controllers)
@@ -496,44 +483,14 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 commands = self.storage.get_commands(controller_id, device_id)
                 total_commands += len(commands)
         
-        return self.async_show_form(
-            step_id="manage_info",
-            data_schema=vol.Schema({}),
+        return self.async_abort(
+            reason="manage_completed",
             description_placeholders={
                 "controllers_count": str(len(controllers)),
                 "devices_count": str(total_devices),
                 "commands_count": str(total_commands)
             }
         )
-    
-    async def async_step_manage_info(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
-        """Show management info."""
-        return self.async_create_entry(
-            title="Данные просмотрены",
-            data={}
-        )
-    
-    def _get_controller_name(self, controller_id: str) -> str:
-        """Get controller name by ID."""
-        if not self.storage or not controller_id:
-            return "Unknown"
-        
-        try:
-            controller = self.storage.get_controller(controller_id)
-            return controller["name"] if controller else "Unknown"
-        except Exception:
-            return "Unknown"
-    
-    def _get_device_name(self, controller_id: str, device_id: str) -> str:
-        """Get device name by ID."""
-        if not self.storage or not controller_id or not device_id:
-            return "Unknown"
-        
-        try:
-            device = self.storage.get_device(controller_id, device_id)
-            return device["name"] if device else "Unknown"
-        except Exception:
-            return "Unknown"
     
     @staticmethod
     @callback
