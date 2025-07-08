@@ -114,71 +114,106 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up IR Remote from a config entry."""
     _LOGGER.info("Setting up IR Remote entry: %s", entry.title)
     
-    # Check ZHA availability
-    if "zha" not in hass.data:
-        _LOGGER.error("ZHA integration not found")
-        raise ConfigEntryNotReady("ZHA integration not available")
-    
-    # Handle special actions from config flow
-    action = entry.data.get("action")
-    if action:
-        _LOGGER.info("Processing action: %s", action)
+    try:
+        # Check ZHA availability
+        if "zha" not in hass.data:
+            _LOGGER.error("ZHA integration not found")
+            raise ConfigEntryNotReady("ZHA integration not available")
         
-        if action == "device_added":
-            await _handle_device_addition(hass, entry)
-        elif action == "command_learning_started":
-            await _handle_command_learning_start(hass, entry)
-        elif action == "data_viewed":
-            pass  # No action needed for viewing data
+        # Handle special actions from config flow
+        action = entry.data.get("action")
+        if action:
+            _LOGGER.info("Processing action: %s", action)
+            
+            try:
+                if action == "device_added":
+                    await _handle_device_addition(hass, entry)
+                elif action == "command_learning_started":
+                    await _handle_command_learning_start(hass, entry)
+                elif action == "data_viewed":
+                    pass  # No action needed for viewing data
+                
+                # Remove this temporary entry after processing
+                await hass.config_entries.async_remove(entry.entry_id)
+                return True
+            except Exception as e:
+                _LOGGER.error("Error processing action %s: %s", action, e, exc_info=True)
+                await hass.config_entries.async_remove(entry.entry_id)
+                return False
         
-        # Remove this temporary entry after processing
-        await hass.config_entries.async_remove(entry.entry_id)
-        return True
-    
-    # This is a real controller entry
-    # Initialize storage for this controller
-    storage = IRRemoteStorage(hass)
-    await storage.async_load()
-    
-    # Add controller to storage if not exists
-    controller_id = entry.entry_id
-    ieee = entry.data[CONF_IEEE]
-    room_name = entry.data[CONF_ROOM_NAME]
-    endpoint_id = entry.data.get(CONF_ENDPOINT, 1)
-    cluster_id = entry.data.get(CONF_CLUSTER, 57348)
-    
-    # Add controller if not exists
-    controllers = storage.get_controllers()
-    controller_exists = any(c["id"] == controller_id for c in controllers)
-    
-    if not controller_exists:
-        success = await storage.async_add_controller(
-            controller_id, ieee, room_name, endpoint_id, cluster_id
-        )
-        if not success:
-            _LOGGER.error("Failed to add controller to storage")
+        # This is a real controller entry
+        _LOGGER.info("Setting up real controller: %s", entry.entry_id)
+        
+        # Initialize storage for this controller
+        try:
+            storage = IRRemoteStorage(hass)
+            await storage.async_load()
+            _LOGGER.info("Storage loaded successfully")
+        except Exception as e:
+            _LOGGER.error("Failed to load storage: %s", e, exc_info=True)
             return False
-    
-    # Store data for this entry
-    hass.data[DOMAIN][entry.entry_id] = {
-        "storage": storage,
-        "config": entry.data,
-    }
-    
-    # Register device
-    await _register_ir_controller_device(hass, entry)
-    
-    # Setup event handler for ZHA events
-    await _setup_zha_event_handler(hass, entry)
-    
-    # Create virtual devices
-    await _create_virtual_devices(hass, entry, storage)
-    
-    # Forward to platforms
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    
-    _LOGGER.info("IR Remote entry setup completed: %s", entry.title)
-    return True
+        
+        # Add controller to storage if not exists
+        controller_id = entry.entry_id
+        ieee = entry.data[CONF_IEEE]
+        room_name = entry.data[CONF_ROOM_NAME]
+        endpoint_id = entry.data.get(CONF_ENDPOINT, 1)
+        cluster_id = entry.data.get(CONF_CLUSTER, 57348)
+        
+        _LOGGER.info("Adding controller: %s, IEEE: %s", controller_id, ieee)
+        
+        try:
+            # Add controller if not exists
+            controllers = storage.get_controllers()
+            controller_exists = any(c["id"] == controller_id for c in controllers)
+            
+            if not controller_exists:
+                success = await storage.async_add_controller(
+                    controller_id, ieee, room_name, endpoint_id, cluster_id
+                )
+                if not success:
+                    _LOGGER.error("Failed to add controller to storage")
+                    return False
+                _LOGGER.info("Controller added to storage successfully")
+            else:
+                _LOGGER.info("Controller already exists in storage")
+        except Exception as e:
+            _LOGGER.error("Error adding controller to storage: %s", e, exc_info=True)
+            return False
+        
+        # Store data for this entry
+        hass.data[DOMAIN][entry.entry_id] = {
+            "storage": storage,
+            "config": entry.data,
+        }
+        
+        try:
+            # Register device
+            await _register_ir_controller_device(hass, entry)
+            _LOGGER.info("Controller device registered")
+            
+            # Setup event handler for ZHA events
+            await _setup_zha_event_handler(hass, entry)
+            _LOGGER.info("ZHA event handler setup")
+            
+            # Create virtual devices
+            await _create_virtual_devices(hass, entry, storage)
+            _LOGGER.info("Virtual devices created")
+            
+            # Forward to platforms
+            await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+            _LOGGER.info("Platforms loaded")
+            
+        except Exception as e:
+            _LOGGER.error("Error during entry setup: %s", e, exc_info=True)
+            return False
+        
+        _LOGGER.info("IR Remote entry setup completed: %s", entry.title)
+        return True
+        
+    except Exception as e:
+        _LOGGER.error("Unexpected error in async_setup_entry: %s", e, exc_info=True)
+        return False
 
 
 async def _handle_device_addition(hass: HomeAssistant, entry: ConfigEntry) -> None:
