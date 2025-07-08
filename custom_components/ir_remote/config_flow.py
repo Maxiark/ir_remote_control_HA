@@ -26,15 +26,6 @@ from .const import (
     ACTION_ADD_DEVICE,
     ACTION_ADD_COMMAND,
     ACTION_MANAGE,
-    STEP_INIT,
-    STEP_SELECT_CONTROLLER,
-    STEP_ADD_CONTROLLER,
-    STEP_ADD_DEVICE,
-    STEP_SELECT_CONTROLLER_FOR_COMMAND,
-    STEP_SELECT_DEVICE_FOR_COMMAND,
-    STEP_ADD_COMMAND,
-    STEP_LEARN_COMMAND,
-    STEP_MANAGE,
     ERROR_NO_ZHA,
     ERROR_NO_DEVICE,
     ERROR_DEVICE_EXISTS,
@@ -169,7 +160,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             })
         
         return self.async_show_form(
-            step_id=STEP_INIT,
+            step_id="init",
             data_schema=vol.Schema({
                 vol.Required(CONF_ACTION): vol.In(actions)
             }),
@@ -220,7 +211,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason=ERROR_NO_ZHA)
         
         return self.async_show_form(
-            step_id=STEP_ADD_CONTROLLER,
+            step_id="add_controller",
             data_schema=vol.Schema({
                 vol.Required(CONF_IEEE): vol.In(zha_devices),
                 vol.Required(CONF_ROOM_NAME): cv.string,
@@ -249,7 +240,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         
         return self.async_show_form(
-            step_id=STEP_SELECT_CONTROLLER,
+            step_id="select_controller_for_device",
             data_schema=vol.Schema({
                 vol.Required(CONF_CONTROLLER_ID): vol.In(controller_options)
             })
@@ -284,7 +275,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             controller_name = controller_entry.title
         
         return self.async_show_form(
-            step_id=STEP_ADD_DEVICE,
+            step_id="add_device",
             data_schema=vol.Schema({
                 vol.Required(CONF_DEVICE_NAME): cv.string,
             }),
@@ -315,7 +306,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         
         return self.async_show_form(
-            step_id=STEP_SELECT_CONTROLLER_FOR_COMMAND,
+            step_id="select_controller_for_command",
             data_schema=vol.Schema({
                 vol.Required(CONF_CONTROLLER_ID): vol.In(controller_options)
             })
