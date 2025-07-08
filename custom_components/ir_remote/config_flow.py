@@ -563,14 +563,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _start_learning_directly(self, controller_id: str, device_id: str, command_id: str, command_name: str) -> None:
         """Start learning directly without using service."""
         try:
-            # Add command to storage first (with empty code)
-            success = await self.storage.async_add_command(
-                controller_id, device_id, command_id, command_name, ""
-            )
-            
-            if not success:
-                _LOGGER.error("Failed to add command to storage")
-                return
+            # Don't create command placeholder - we'll create it after learning
+            _LOGGER.info("Starting learning process for %s - %s", device_id, command_name)
             
             # Get controller data from storage
             controller = self.storage.get_controller(controller_id)

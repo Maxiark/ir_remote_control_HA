@@ -199,12 +199,8 @@ async def _register_services(hass: HomeAssistant) -> None:
             _LOGGER.error("Controller data not found: %s", controller_id)
             return
         
-        # Ensure command exists in storage (create if needed)
-        existing_code = storage.get_command_code(controller_id, device_id, command_id)
-        if existing_code is None:
-            # Create command with empty code
-            await storage.async_add_command(controller_id, device_id, command_id, command_id.title(), "")
-            _LOGGER.info("Created command placeholder: %s - %s", device_id, command_id)
+        # Don't create command placeholder - we'll create it after learning
+        _LOGGER.info("Starting learning process for %s - %s", device_id, command_id)
         
         try:
             # Send ZHA command to start learning

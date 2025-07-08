@@ -277,7 +277,7 @@ class IRRemoteStorage:
         ir_code: str
     ) -> bool:
         """Add command to device."""
-        if not self._validate_name(command_name) or not ir_code:
+        if not self._validate_name(command_name):
             _LOGGER.warning("Invalid command data: name=%s, code_len=%d", 
                           command_name, len(ir_code) if ir_code else 0)
             return False
