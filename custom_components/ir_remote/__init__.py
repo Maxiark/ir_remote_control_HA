@@ -104,7 +104,12 @@ async def async_setup(hass: HomeAssistant, config: Dict[str, Any]) -> bool:
     hass.data.setdefault(DOMAIN, {})
     
     # Register services
-    await _register_services(hass)
+    try:
+        await _register_services(hass)
+        _LOGGER.info("IR Remote services registered successfully")
+    except Exception as e:
+        _LOGGER.error("Failed to register IR Remote services: %s", e)
+        return False
     
     _LOGGER.info("IR Remote integration setup completed")
     return True
@@ -171,6 +176,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _register_services(hass: HomeAssistant) -> None:
     """Register services for IR Remote."""
+    _LOGGER.info("Starting service registration...")
     
     async def learn_command_service(call: ServiceCall) -> None:
         """Service to learn IR command."""
@@ -178,7 +184,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         device_id = call.data[ATTR_DEVICE]
         command_id = call.data[ATTR_COMMAND]
         
-        _LOGGER.info("Learning command: %s - %s", device_id, command_id)
+        _LOGGER.info("Learning command service called: %s - %s", device_id, command_id)
         
         # Get storage and controller
         entry_data = hass.data[DOMAIN].get(controller_id)
@@ -369,26 +375,37 @@ async def _register_services(hass: HomeAssistant) -> None:
             return all_data
     
     # Register services
+    _LOGGER.info("Registering learn_command service...")
     hass.services.async_register(
         DOMAIN, SERVICE_LEARN_COMMAND, learn_command_service, schema=LEARN_COMMAND_SCHEMA
     )
+    
+    _LOGGER.info("Registering send_code service...")
     hass.services.async_register(
         DOMAIN, SERVICE_SEND_CODE, send_code_service, schema=SEND_CODE_SCHEMA
     )
+    
+    _LOGGER.info("Registering send_command service...")
     hass.services.async_register(
         DOMAIN, SERVICE_SEND_COMMAND, send_command_service, schema=SEND_COMMAND_SCHEMA
     )
+    
+    _LOGGER.info("Registering add_device service...")
     hass.services.async_register(
         DOMAIN, SERVICE_ADD_DEVICE, add_device_service, schema=ADD_DEVICE_SCHEMA
     )
+    
+    _LOGGER.info("Registering add_command service...")
     hass.services.async_register(
         DOMAIN, SERVICE_ADD_COMMAND, add_command_service, schema=ADD_COMMAND_SCHEMA
     )
+    
+    _LOGGER.info("Registering get_data service...")
     hass.services.async_register(
         DOMAIN, SERVICE_GET_DATA, get_data_service, schema=GET_DATA_SCHEMA, supports_response=True
     )
     
-    _LOGGER.info("IR Remote services registered")
+    _LOGGER.info("All IR Remote services registered successfully")
 
 
 async def _setup_zha_event_handler(hass: HomeAssistant, entry: ConfigEntry) -> None:

@@ -475,31 +475,85 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     
     async def async_step_learning_started(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Show learning started message and start the process."""
-        # Start learning process
         controller_id = self.flow_data[CONF_CONTROLLER_ID]
         device_id = self.flow_data["device_id"]
         command_id = self.flow_data["command_id"]
+        command_name = self.flow_data[CONF_COMMAND_NAME]
         
         try:
-            await self.hass.services.async_call(
-                DOMAIN,
-                "learn_command",
-                {
-                    "controller_id": controller_id,
-                    "device": device_id,
-                    "command": command_id,
-                },
-                blocking=False
-            )
+            # Check if service exists, if not - start learning directly
+            if self.hass.services.has_service("ir_remote", "learn_command"):
+                await self.hass.services.async_call(
+                    "ir_remote",
+                    "learn_command",
+                    {
+                        "controller_id": controller_id,
+                        "device": device_id,
+                        "command": command_id,
+                    },
+                    blocking=False
+                )
+            else:
+                # Start learning directly through the controller
+                await self._start_learning_directly(controller_id, device_id, command_id, command_name)
+                
         except Exception as e:
             _LOGGER.error("Failed to start learning: %s", e)
         
         return self.async_abort(
             reason="command_learning_started",
             description_placeholders={
-                "command_name": self.flow_data.get(CONF_COMMAND_NAME, "Unknown")
+                "command_name": command_name
             }
         )
+    
+    async def _start_learning_directly(self, controller_id: str, device_id: str, command_id: str, command_name: str) -> None:
+        """Start learning directly without using service."""
+        try:
+            # Add command to storage first (with empty code)
+            success = await self.storage.async_add_command(
+                controller_id, device_id, command_id, command_name, ""
+            )
+            
+            if not success:
+                _LOGGER.error("Failed to add command to storage")
+                return
+            
+            # Get controller data from storage
+            controller = self.storage.get_controller(controller_id)
+            if not controller:
+                _LOGGER.error("Controller not found: %s", controller_id)
+                return
+            
+            # Send ZHA command directly
+            await self.hass.services.async_call(
+                "zha",
+                "issue_zigbee_cluster_command",
+                {
+                    "ieee": controller["ieee"],
+                    "endpoint_id": controller["endpoint_id"],
+                    "cluster_id": controller["cluster_id"],
+                    "cluster_type": "in",
+                    "command": 1,  # ZHA_COMMAND_LEARN
+                    "command_type": "server",
+                    "params": {
+                        "controller_id": controller_id,
+                        "device_id": device_id,
+                        "command_id": command_id,
+                        "command_name": command_name
+                    }
+                },
+                blocking=True
+            )
+            _LOGGER.info("Learning command sent directly for %s - %s", device_id, command_name)
+            
+            # Schedule reload to create button entity
+            self.hass.async_create_task(
+                self._reload_entry_after_delay(controller_id)
+            )
+            
+        except Exception as e:
+            _LOGGER.error("Failed to start learning directly: %s", e)
     
     async def async_step_manage(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle management of existing data."""
