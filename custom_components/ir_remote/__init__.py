@@ -11,7 +11,6 @@ from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
-from homeassistant import config_entries
 
 from .const import (
     DOMAIN,
@@ -19,9 +18,6 @@ from .const import (
     CONF_ENDPOINT,
     CONF_CLUSTER,
     CONF_ROOM_NAME,
-    CONF_CONTROLLER_ID,
-    CONF_DEVICE_NAME,
-    CONF_COMMAND_NAME,
     DEFAULT_CLUSTER_TYPE,
     DEFAULT_COMMAND_TYPE,
     SERVICE_LEARN_COMMAND,
@@ -118,215 +114,54 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up IR Remote from a config entry."""
     _LOGGER.info("Setting up IR Remote entry: %s", entry.title)
     
-    try:
-        # Check ZHA availability
-        if "zha" not in hass.data:
-            _LOGGER.error("ZHA integration not found")
-            raise ConfigEntryNotReady("ZHA integration not available")
-        
-        # Handle special actions from config flow
-        action = entry.data.get("action")
-        if action:
-            _LOGGER.info("Processing action: %s", action)
-            
-            try:
-                if action == "device_added":
-                    await _handle_device_addition(hass, entry)
-                elif action == "command_learning_started":
-                    await _handle_command_learning_start(hass, entry)
-                elif action == "data_viewed":
-                    pass  # No action needed for viewing data
-                
-                # Remove this temporary entry after processing
-                await hass.config_entries.async_remove(entry.entry_id)
-                return True
-            except Exception as e:
-                _LOGGER.error("Error processing action %s: %s", action, e, exc_info=True)
-                await hass.config_entries.async_remove(entry.entry_id)
-                return False
-        
-        # This is a real controller entry
-        _LOGGER.info("Setting up real controller: %s", entry.entry_id)
-        
-        # Initialize storage for this controller
-        try:
-            _LOGGER.info("Step 1: Creating storage...")
-            storage = IRRemoteStorage(hass)
-            _LOGGER.info("Step 2: Loading storage...")
-            await storage.async_load()
-            _LOGGER.info("Step 3: Storage loaded successfully")
-        except Exception as e:
-            _LOGGER.error("Failed to load storage: %s", e, exc_info=True)
-            return False
-        
-        # Add controller to storage if not exists
-        controller_id = entry.entry_id
-        ieee = entry.data[CONF_IEEE]
-        room_name = entry.data[CONF_ROOM_NAME]
-        endpoint_id = entry.data.get(CONF_ENDPOINT, 1)
-        cluster_id = entry.data.get(CONF_CLUSTER, 57348)
-        
-        _LOGGER.info("Step 4: Adding controller: %s, IEEE: %s", controller_id, ieee)
-        
-        try:
-            # Add controller if not exists
-            controllers = storage.get_controllers()
-            controller_exists = any(c["id"] == controller_id for c in controllers)
-            
-            if not controller_exists:
-                _LOGGER.info("Step 5: Controller doesn't exist, adding...")
-                success = await storage.async_add_controller(
-                    controller_id, ieee, room_name, endpoint_id, cluster_id
-                )
-                if not success:
-                    _LOGGER.error("Failed to add controller to storage")
-                    return False
-                _LOGGER.info("Step 6: Controller added to storage successfully")
-            else:
-                _LOGGER.info("Step 5: Controller already exists in storage")
-        except Exception as e:
-            _LOGGER.error("Error adding controller to storage: %s", e, exc_info=True)
-            return False
-        
-        # Store data for this entry
-        _LOGGER.info("Step 7: Storing entry data...")
-        hass.data[DOMAIN][entry.entry_id] = {
-            "storage": storage,
-            "config": entry.data,
-        }
-        
-        try:
-            # Register device
-            _LOGGER.info("Step 8: Registering IR controller device...")
-            await _register_ir_controller_device(hass, entry)
-            _LOGGER.info("Step 9: Controller device registered")
-            
-            # Setup event handler for ZHA events
-            _LOGGER.info("Step 10: Setting up ZHA event handler...")
-            await _setup_zha_event_handler(hass, entry)
-            _LOGGER.info("Step 11: ZHA event handler setup")
-            
-            # Create virtual devices
-            _LOGGER.info("Step 12: Creating virtual devices...")
-            await _create_virtual_devices(hass, entry, storage)
-            _LOGGER.info("Step 13: Virtual devices created")
-            
-            # Forward to platforms
-            _LOGGER.info("Step 14: Loading platforms...")
-            await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-            _LOGGER.info("Step 15: Platforms loaded")
-            
-        except Exception as e:
-            _LOGGER.error("Error during entry setup: %s", e, exc_info=True)
-            return False
-        
-        _LOGGER.info("IR Remote entry setup completed: %s", entry.title)
-        return True
-        
-    except Exception as e:
-        _LOGGER.error("Unexpected error in async_setup_entry: %s", e, exc_info=True)
-        return False
-
-
-async def _handle_device_addition(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle device addition from config flow."""
-    controller_id = entry.data[CONF_CONTROLLER_ID]
-    device_name = entry.data[CONF_DEVICE_NAME]
+    # Check ZHA availability
+    if "zha" not in hass.data:
+        _LOGGER.error("ZHA integration not found")
+        raise ConfigEntryNotReady("ZHA integration not available")
     
-    _LOGGER.info("Adding device: %s to controller %s", device_name, controller_id)
+    # Initialize storage for this controller
+    storage = IRRemoteStorage(hass)
+    await storage.async_load()
     
-    # Get the controller's storage - create if not exists
-    entry_data = hass.data[DOMAIN].get(controller_id)
-    if not entry_data:
-        _LOGGER.warning("Controller %s not found in hass.data, creating storage directly", controller_id)
-        # Create storage directly
-        storage = IRRemoteStorage(hass)
-        await storage.async_load()
-    else:
-        storage = entry_data["storage"]
+    # Add controller to storage if not exists
+    controller_id = entry.entry_id
+    ieee = entry.data[CONF_IEEE]
+    room_name = entry.data[CONF_ROOM_NAME]
+    endpoint_id = entry.data.get(CONF_ENDPOINT, 1)
+    cluster_id = entry.data.get(CONF_CLUSTER, 57348)
     
-    # Generate device ID
-    device_id = device_name.lower().replace(" ", "_").replace("-", "_")
+    # Add controller if not exists
+    controllers = storage.get_controllers()
+    controller_exists = any(c["id"] == controller_id for c in controllers)
     
-    # Add device
-    success = await storage.async_add_device(controller_id, device_id, device_name)
-    if success:
-        _LOGGER.info("Successfully added device: %s", device_name)
-        # Try to reload the controller config entry to create new entities
-        config_entry = hass.config_entries.async_get_entry(controller_id)
-        if config_entry:
-            # Don't reload if entry is still being set up
-            if config_entry.state == config_entries.ConfigEntryState.LOADED:
-                await hass.config_entries.async_reload(controller_id)
-            else:
-                _LOGGER.info("Controller entry not yet loaded, skipping reload")
-    else:
-        _LOGGER.error("Failed to add device: %s", device_name)
-
-
-async def _handle_command_learning_start(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle command learning start from config flow."""
-    controller_id = entry.data[CONF_CONTROLLER_ID]
-    device_name = entry.data[CONF_DEVICE_NAME]
-    command_name = entry.data[CONF_COMMAND_NAME]
-    
-    _LOGGER.info("Starting command learning: %s - %s for controller %s", device_name, command_name, controller_id)
-    
-    # Get the controller's storage - create if not exists
-    entry_data = hass.data[DOMAIN].get(controller_id)
-    if not entry_data:
-        _LOGGER.warning("Controller %s not found in hass.data, creating storage directly", controller_id)
-        # Create storage directly
-        storage = IRRemoteStorage(hass)
-        await storage.async_load()
-    else:
-        storage = entry_data["storage"]
-    
-    # Generate IDs
-    device_id = device_name.lower().replace(" ", "_").replace("-", "_")
-    command_id = command_name.lower().replace(" ", "_").replace("-", "_")
-    
-    # Ensure device exists
-    devices = storage.get_devices(controller_id)
-    device_exists = any(d["id"] == device_id for d in devices)
-    
-    if not device_exists:
-        # Add device first
-        success = await storage.async_add_device(controller_id, device_id, device_name)
-        if not success:
-            _LOGGER.error("Failed to create device for command learning")
-            return
-    
-    # Get controller data for ZHA command
-    controller = storage.get_controller(controller_id)
-    if not controller:
-        _LOGGER.error("Controller data not found: %s", controller_id)
-        return
-    
-    try:
-        # Send ZHA command to start learning
-        await hass.services.async_call(
-            "zha",
-            "issue_zigbee_cluster_command",
-            {
-                "ieee": controller["ieee"],
-                "endpoint_id": controller["endpoint_id"],
-                "cluster_id": controller["cluster_id"],
-                "cluster_type": DEFAULT_CLUSTER_TYPE,
-                "command": ZHA_COMMAND_LEARN,
-                "command_type": DEFAULT_COMMAND_TYPE,
-                "params": {
-                    "controller_id": controller_id,
-                    "device_id": device_id,
-                    "command_id": command_id,
-                    "command_name": command_name
-                }
-            },
-            blocking=True
+    if not controller_exists:
+        success = await storage.async_add_controller(
+            controller_id, ieee, room_name, endpoint_id, cluster_id
         )
-        _LOGGER.info("Learning command sent for %s - %s", device_name, command_name)
-    except Exception as e:
-        _LOGGER.error("Failed to start learning: %s", e)
+        if not success:
+            _LOGGER.error("Failed to add controller to storage")
+            return False
+    
+    # Store data for this entry
+    hass.data[DOMAIN][entry.entry_id] = {
+        "storage": storage,
+        "config": entry.data,
+    }
+    
+    # Register device
+    await _register_ir_controller_device(hass, entry)
+    
+    # Setup event handler for ZHA events
+    await _setup_zha_event_handler(hass, entry)
+    
+    # Create virtual devices
+    await _create_virtual_devices(hass, entry, storage)
+    
+    # Forward to platforms
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    
+    _LOGGER.info("IR Remote entry setup completed: %s", entry.title)
+    return True
 
 
 async def _register_services(hass: HomeAssistant) -> None:

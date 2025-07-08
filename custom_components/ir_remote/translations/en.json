@@ -44,6 +44,10 @@
                     "device_name": "For example: TV, Audio System, Air Conditioner"
                 }
             },
+            "device_added_success": {
+                "title": "Device Added",
+                "description": "Device \"{device_name}\" successfully added to controller \"{controller_name}\".\n\nYou can now add commands for this device through integration configuration or use services in Developer Tools."
+            },
             "select_controller_for_command": {
                 "title": "Select IR Controller",
                 "description": "Choose IR controller to add command to.",
@@ -75,9 +79,17 @@
                     "ready": "Ready to Learn"
                 }
             },
+            "command_learning_started": {
+                "title": "Learning Started",
+                "description": "Learning command \"{command_name}\" for device \"{device_name}\" has started.\n\nNow press the desired button on the original remote. The command will be automatically saved after receiving the IR signal.\n\nAfter successful learning, reload the integration to update the button list."
+            },
             "manage": {
                 "title": "Data Management",
                 "description": "Current IR Remote status:\n\n• Controllers: {controllers_count}\n• Devices: {devices_count}\n• Commands: {commands_count}\n\nUse Developer Tools → Services for programmatic device and command management."
+            },
+            "manage_info": {
+                "title": "Data Information",
+                "description": "Current IR Remote status:\n\n• Controllers: {controllers_count}\n• Devices: {devices_count}\n• Commands: {commands_count}\n\nFor data management use:\n- Developer Tools → Services\n- Integration configuration\n- Device buttons in interface"
             }
         },
         "error": {
