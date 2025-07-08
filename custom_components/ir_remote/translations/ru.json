@@ -1,96 +1,215 @@
 {
     "config": {
         "step": {
-            "user": {
-                "title": "Настройка ИК пульта",
-                "description": "Выберите ваше устройство ИК пульта из ZHA",
+            "init": {
+                "title": "IR Remote - Управление",
+                "description": "Выберите действие для управления ИК-пультами и устройствами.\n\nТекущее количество пультов: {controllers_count}",
                 "data": {
-                    "ieee": "ZHA Устройство",
-                    "endpoint_id": "Endpoint ID",
-                    "cluster_id": "Cluster ID"
+                    "action": "Действие"
+                },
+                "data_description": {
+                    "action": "Выберите, что вы хотите сделать"
                 }
             },
-            "clusters": {
-                "title": "Конфигурация ИК пульта",
-                "description": "Настройте параметры endpoint и cluster",
+            "add_controller": {
+                "title": "Добавить ИК-пульт",
+                "description": "Выберите ZHA устройство, которое будет использоваться как ИК-пульт, и укажите комнату.",
                 "data": {
+                    "ieee": "ZHA Устройство",
+                    "room_name": "Название комнаты",
                     "endpoint_id": "Endpoint ID",
                     "cluster_id": "Cluster ID"
+                },
+                "data_description": {
+                    "ieee": "Выберите ИК-пульт из списка ZHA устройств",
+                    "room_name": "Например: Гостиная, Спальня, Кухня",
+                    "endpoint_id": "Обычно 1, изменяйте только если знаете что делаете",
+                    "cluster_id": "Обычно 57348, изменяйте только если знаете что делаете"
                 }
+            },
+            "select_controller": {
+                "title": "Выбор ИК-пульта",
+                "description": "Выберите ИК-пульт для добавления устройства.",
+                "data": {
+                    "controller_id": "ИК-пульт"
+                }
+            },
+            "add_device": {
+                "title": "Добавить устройство",
+                "description": "Добавьте новое виртуальное устройство к пульту \"{controller_name}\".",
+                "data": {
+                    "device_name": "Название устройства"
+                },
+                "data_description": {
+                    "device_name": "Например: Телевизор, Аудиосистема, Кондиционер"
+                }
+            },
+            "select_controller_for_command": {
+                "title": "Выбор ИК-пульта",
+                "description": "Выберите ИК-пульт для добавления команды.",
+                "data": {
+                    "controller_id": "ИК-пульт"
+                }
+            },
+            "select_device_for_command": {
+                "title": "Выбор устройства",
+                "description": "Выберите устройство для добавления команды.",
+                "data": {
+                    "device_id": "Устройство"
+                }
+            },
+            "add_command": {
+                "title": "Добавить команду",
+                "description": "Добавьте новую команду к устройству \"{device_name}\" (пульт: \"{controller_name}\").",
+                "data": {
+                    "command_name": "Название команды"
+                },
+                "data_description": {
+                    "command_name": "Например: Включить, Выключить, Громче, Тише"
+                }
+            },
+            "learn_command": {
+                "title": "Обучение команде",
+                "description": "Сейчас начнётся обучение команде \"{command_name}\" для устройства \"{device_name}\".\n\n1. Убедитесь, что ИК-пульт \"{controller_name}\" направлен на обучаемое устройство\n2. Нажмите \"Готов к обучению\"\n3. Сразу нажмите нужную кнопку на оригинальном пульте\n\nКоманда будет автоматически сохранена после получения ИК-сигнала.",
+                "data": {
+                    "ready": "Готов к обучению"
+                }
+            },
+            "manage": {
+                "title": "Управление данными",
+                "description": "Просмотр текущего состояния IR Remote:\n\n• Пультов: {controllers_count}\n• Устройств: {devices_count}\n• Команд: {commands_count}\n\nИспользуйте Developer Tools → Services для программного управления устройствами и командами."
             }
         },
         "error": {
             "device_not_found": "Выбранное устройство не найдено в ZHA",
-            "zha_not_found": "Интеграция ZHA не найдена"
+            "zha_not_found": "ZHA интеграция не найдена или zha_toolkit недоступен",
+            "device_exists": "Устройство с таким именем уже существует",
+            "command_exists": "Команда с таким именем уже существует",
+            "invalid_name": "Недопустимое имя. Используйте только буквы, цифры, пробелы, дефисы и подчёркивания",
+            "learn_timeout": "Время ожидания ИК-сигнала истекло",
+            "learn_failed": "Не удалось получить ИК-сигнал",
+            "add_device_failed": "Не удалось добавить устройство",
+            "no_devices": "У этого пульта нет устройств. Сначала добавьте устройство."
         },
         "abort": {
-            "single_instance_allowed": "Допускается только один экземпляр"
+            "single_instance_allowed": "Разрешена только одна копия интеграции"
         }
     },
     "entity": {
-        "select": {
-            "learn_device": {
-                "name": "Устройство для обучения",
-                "state": {
-                    "none": "Выберите устройство"
-                }
-            },
-            "send_device": {
-                "name": "Устройство для отправки",
-                "state": {
-                    "none": "Выберите устройство"
-                }
-            },
-            "send_command": {
-                "name": "Команда",
-                "state": {
-                    "none": "Выберите команду"
-                }
-            }
-        },
-        "text": {
-            "button_name": {
-                "name": "Название кнопки"
-            },
-            "new_device_name": {
-                "name": "Название нового устройства"
-            }
-        },
         "button": {
-            "learn_button": {
-                "name": "Начать обучение"
+            "add_command": {
+                "name": "Добавить команду"
             },
-            "send_button": {
-                "name": "Отправить команду"
-            },
-            "add_device_button": {
-                "name": "Добавить устройство"
+            "device_command": {
+                "name": "{command_name}"
             }
         }
     },
     "services": {
-        "learn_code": {
-            "name": "Обучение ИК коду",
-            "description": "Перевести ИК пульт в режим обучения и сохранить код",
+        "learn_command": {
+            "name": "Обучить команду",
+            "description": "Переводит ИК-пульт в режим обучения для сохранения новой команды",
             "fields": {
+                "controller_id": {
+                    "name": "ID пульта",
+                    "description": "Идентификатор ИК-пульта"
+                },
                 "device": {
                     "name": "Устройство",
-                    "description": "Название устройства"
+                    "description": "ID устройства для команды"
                 },
-                "button": {
-                    "name": "Кнопка",
-                    "description": "Название кнопки"
+                "command": {
+                    "name": "Команда",
+                    "description": "ID команды для обучения"
                 }
             }
         },
         "send_code": {
-            "name": "Отправить ИК код",
-            "description": "Отправить ИК код вручную",
+            "name": "Отправить ИК-код",
+            "description": "Отправляет ИК-код напрямую через указанный пульт",
             "fields": {
+                "controller_id": {
+                    "name": "ID пульта",
+                    "description": "Идентификатор ИК-пульта"
+                },
                 "code": {
-                    "name": "Код",
-                    "description": "ИК код для отправки"
+                    "name": "ИК-код",
+                    "description": "ИК-код для отправки"
                 }
+            }
+        },
+        "send_command": {
+            "name": "Отправить команду",
+            "description": "Отправляет команду по имени устройства и команды",
+            "fields": {
+                "controller_id": {
+                    "name": "ID пульта",
+                    "description": "Идентификатор ИК-пульта"
+                },
+                "device": {
+                    "name": "Устройство",
+                    "description": "ID устройства"
+                },
+                "command": {
+                    "name": "Команда", 
+                    "description": "ID команды"
+                }
+            }
+        },
+        "add_device": {
+            "name": "Добавить устройство",
+            "description": "Добавляет новое виртуальное устройство к ИК-пульту",
+            "fields": {
+                "controller_id": {
+                    "name": "ID пульта",
+                    "description": "Идентификатор ИК-пульта"
+                },
+                "device_name": {
+                    "name": "Название устройства",
+                    "description": "Название нового устройства"
+                }
+            }
+        },
+        "add_command": {
+            "name": "Добавить команду",
+            "description": "Добавляет готовую команду с ИК-кодом к устройству",
+            "fields": {
+                "controller_id": {
+                    "name": "ID пульта",
+                    "description": "Идентификатор ИК-пульта"
+                },
+                "device": {
+                    "name": "Устройство",
+                    "description": "ID устройства"
+                },
+                "command_name": {
+                    "name": "Название команды",
+                    "description": "Название новой команды"
+                },
+                "code": {
+                    "name": "ИК-код",
+                    "description": "ИК-код для команды"
+                }
+            }
+        },
+        "get_data": {
+            "name": "Получить данные",
+            "description": "Возвращает данные об ИК-пультах, устройствах и командах",
+            "fields": {
+                "controller_id": {
+                    "name": "ID пульта",
+                    "description": "ID конкретного пульта (необязательно)"
+                }
+            }
+        }
+    },
+    "selector": {
+        "action": {
+            "options": {
+                "add_controller": "Добавить новый ИК-пульт",
+                "add_device": "Добавить виртуальное устройство", 
+                "add_command": "Добавить команду к устройству",
+                "manage": "Управление существующими данными"
             }
         }
     }

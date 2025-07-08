@@ -1,13 +1,13 @@
 {
-"domain": "ir_remote",
-"name": "IR Remote",
-"codeowners": ["@Maxiark"],
-"config_flow": true,
-"dependencies": ["http", "zha", "zha_toolkit"],
-"documentation": "https://github.com/Maxiark/ir_remote_control_HA",
-"integration_type": "device",
-"iot_class": "local_push",
-"issue_tracker": "https://github.com/Maxiark/ir_remote_control_HA/issues",
-"requirements": ["aiofiles"],
-"version": "0.1.14"
+    "domain": "ir_remote",
+    "name": "IR Remote Control",
+    "codeowners": ["@Maxiark"],
+    "config_flow": true,
+    "dependencies": ["zha", "zha_toolkit"],
+    "documentation": "https://github.com/Maxiark/ir_remote_control_HA",
+    "integration_type": "device",
+    "iot_class": "local_push", 
+    "issue_tracker": "https://github.com/Maxiark/ir_remote_control_HA/issues",
+    "requirements": ["aiofiles>=23.0.0"],
+    "version": "2.0.0"
 }

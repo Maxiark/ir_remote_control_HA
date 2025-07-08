@@ -1,458 +1,413 @@
-"""IR Remote data handler - исправленная версия с Storage API."""
+"""IR Remote data management using Storage API."""
 import logging
+import re
 import asyncio
+from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    STORAGE_VERSION,
+    STORAGE_KEY,
+    MAX_NAME_LENGTH,
+    ALLOWED_NAME_PATTERN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-# Версия хранилища данных
-STORAGE_VERSION = 1
-STORAGE_KEY = "ir_remote_codes"
-
-# Блокировка для предотвращения одновременного доступа
-storage_lock = asyncio.Lock()
+# Storage lock to prevent concurrent access
+_storage_lock = asyncio.Lock()
 
 
-async def async_create_notification(hass: HomeAssistant, message: str, title: str, notification_id: str) -> None:
-    """Создать уведомление пользователю."""
-    try:
-        await hass.services.async_call(
-            "persistent_notification",
-            "create",
-            {
-                "message": message,
-                "title": title,
-                "notification_id": notification_id
-            }
-        )
-    except Exception as e:
-        _LOGGER.debug("Could not create notification: %s", e)
-        _LOGGER.info("Notification: %s - %s", title, message)
-
-
-class IRRemoteData:
-    """Класс для работы с данными ИК-пульта через Storage API."""
+class IRRemoteStorage:
+    """Class for managing IR Remote data through Storage API."""
     
-    def __init__(self, hass: HomeAssistant):
-        """Инициализация хранилища данных."""
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize the storage manager."""
         self.hass = hass
-        # Используем Storage API для хранения данных
         self.store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
-        # Старый путь для миграции данных
-        self.old_data_file = Path(hass.config.path()) / "custom_components" / DOMAIN / "scripts" / "ir_codes.json"
-        self._data = None
+        self._data: Dict[str, Any] = {}
         self._loaded = False
         
-        _LOGGER.info("IR Remote using Storage API: %s", STORAGE_KEY)
+        # Old data file path for migration
+        self._old_data_file = (
+            Path(hass.config.path()) / "custom_components" / DOMAIN / "scripts" / "ir_codes.json"
+        )
+        
+        _LOGGER.debug("IR Remote Storage initialized with key: %s", STORAGE_KEY)
     
-    async def _migrate_old_data(self) -> None:
-        """Миграция данных из старого местоположения."""
-        try:
-            # Проверяем, есть ли старый файл и нет ли уже данных в Storage
-            old_exists = await self.hass.async_add_executor_job(lambda: self.old_data_file.exists())
-            storage_data = await self.store.async_load()
-            
-            if old_exists and not storage_data:
-                _LOGGER.info("Migrating IR codes from old location to Storage API")
-                
-                # Читаем старый файл
-                import json
-                import aiofiles
-                
-                async with aiofiles.open(self.old_data_file, 'r', encoding='utf-8') as f:
-                    old_content = await f.read()
-                
-                old_data = json.loads(old_content)
-                
-                # Создаем резервную копию старого файла
-                backup_path = self.old_data_file.with_suffix('.backup')
-                async with aiofiles.open(backup_path, 'w', encoding='utf-8') as f:
-                    await f.write(old_content)
-                
-                # Сохраняем в Storage API
-                await self.store.async_save(old_data)
-                
-                _LOGGER.info("Migration completed successfully. Backup saved: %s", backup_path)
-                
-                # Уведомляем пользователя о миграции
-                await async_create_notification(
-                    self.hass,
-                    "Данные ИК-пульта перенесены в системное хранилище Home Assistant. "
-                    "Теперь они не будут потеряны при обновлениях интеграции и будут "
-                    "автоматически включены в резервные копии HA.",
-                    "IR Remote: Миграция данных",
-                    f"{DOMAIN}_migration"
-                )
-                
-        except Exception as e:
-            _LOGGER.error("Error during data migration: %s", e, exc_info=True)
-    
-    async def async_load(self) -> dict:
-        """Загрузка данных из Storage API."""
-        if self._loaded and self._data is not None:
+    async def async_load(self) -> Dict[str, Any]:
+        """Load data from Storage API."""
+        if self._loaded:
             return self._data
         
-        async with storage_lock:
+        async with _storage_lock:
             try:
-                # Сначала пытаемся мигрировать старые данные
+                # First attempt migration from old format
                 await self._migrate_old_data()
                 
-                # Загружаем данные из Storage API
-                self._data = await self.store.async_load()
+                # Load from Storage API
+                stored_data = await self.store.async_load()
                 
-                if self._data is None:
-                    _LOGGER.info("No existing IR data found, initializing empty storage")
-                    self._data = {}
-                    await self.store.async_save(self._data)
+                if stored_data is None:
+                    _LOGGER.info("No existing IR data, initializing empty storage")
+                    self._data = {"controllers": {}}
+                    await self.async_save()
                 else:
-                    _LOGGER.info("IR data loaded from storage: %d devices", len(self._data))
+                    self._data = stored_data
+                    _LOGGER.info("IR data loaded: %d controllers", len(self._data.get("controllers", {})))
                 
                 self._loaded = True
                 
             except Exception as e:
-                _LOGGER.error("Error loading IR data from storage: %s", e, exc_info=True)
-                self._data = {}
+                _LOGGER.error("Error loading IR data: %s", e, exc_info=True)
+                self._data = {"controllers": {}}
                 self._loaded = True
         
         return self._data
     
     async def async_save(self) -> bool:
-        """Сохранение данных в Storage API."""
-        async with storage_lock:
+        """Save data to Storage API."""
+        async with _storage_lock:
             try:
-                await self.store.async_save(self._data or {})
-                _LOGGER.debug("IR data successfully saved to storage")
+                await self.store.async_save(self._data)
+                _LOGGER.debug("IR data saved successfully")
                 return True
             except Exception as e:
-                _LOGGER.error("Error saving IR data to storage: %s", e, exc_info=True)
+                _LOGGER.error("Error saving IR data: %s", e, exc_info=True)
                 return False
     
-    def get_devices(self) -> list:
-        """Получить список устройств."""
-        if not self._data:
-            return []
-        return sorted(list(self._data.keys()))
+    async def _migrate_old_data(self) -> None:
+        """Migrate data from old ir_codes.json format."""
+        try:
+            old_exists = await self.hass.async_add_executor_job(
+                lambda: self._old_data_file.exists()
+            )
+            
+            if not old_exists:
+                return
+            
+            # Check if we already have data in Storage
+            existing_data = await self.store.async_load()
+            if existing_data:
+                return  # Migration already done
+            
+            _LOGGER.info("Migrating old IR codes data")
+            
+            import json
+            import aiofiles
+            
+            # Read old file
+            async with aiofiles.open(self._old_data_file, 'r', encoding='utf-8') as f:
+                old_content = await f.read()
+            
+            old_data = json.loads(old_content)
+            
+            # Convert to new format
+            migrated_data = {
+                "controllers": {
+                    "migrated_controller": {
+                        "ieee": "migrated",
+                        "name": "Мигрированный ИК-пульт",
+                        "endpoint_id": 1,
+                        "cluster_id": 57348,
+                        "devices": {}
+                    }
+                }
+            }
+            
+            # Convert old devices to new format
+            for device_name, commands in old_data.items():
+                migrated_data["controllers"]["migrated_controller"]["devices"][device_name] = {
+                    "name": device_name.title(),
+                    "commands": commands
+                }
+            
+            # Save migrated data
+            self._data = migrated_data
+            await self.store.async_save(self._data)
+            
+            # Create backup of old file
+            backup_path = self._old_data_file.with_suffix('.backup')
+            await self.hass.async_add_executor_job(
+                lambda: self._old_data_file.rename(backup_path)
+            )
+            
+            _LOGGER.info("Migration completed, backup saved: %s", backup_path)
+            
+        except Exception as e:
+            _LOGGER.warning("Migration failed, continuing with empty data: %s", e)
     
-    def get_commands(self, device: str) -> list:
-        """Получить список команд для устройства."""
-        if not self._data or device not in self._data or device == "none":
-            return []
-        return sorted(list(self._data[device].keys()))
+    def _validate_name(self, name: str) -> bool:
+        """Validate name according to rules."""
+        if not name or len(name) > MAX_NAME_LENGTH:
+            return False
+        
+        return bool(re.match(ALLOWED_NAME_PATTERN, name))
     
-    def get_code(self, device: str, command: str) -> str:
-        """Получить ИК-код для устройства и команды."""
-        if not self._data or device not in self._data or command not in self._data[device]:
+    async def async_add_controller(
+        self, 
+        controller_id: str, 
+        ieee: str, 
+        room_name: str,
+        endpoint_id: int = 1,
+        cluster_id: int = 57348
+    ) -> bool:
+        """Add new IR controller."""
+        if not self._validate_name(room_name):
+            _LOGGER.warning("Invalid room name: %s", room_name)
+            return False
+        
+        await self.async_load()
+        
+        if "controllers" not in self._data:
+            self._data["controllers"] = {}
+        
+        if controller_id in self._data["controllers"]:
+            _LOGGER.warning("Controller %s already exists", controller_id)
+            return False
+        
+        self._data["controllers"][controller_id] = {
+            "ieee": ieee,
+            "name": f"ИК-пульт в {room_name}",
+            "room_name": room_name,
+            "endpoint_id": endpoint_id,
+            "cluster_id": cluster_id,
+            "devices": {}
+        }
+        
+        success = await self.async_save()
+        if success:
+            _LOGGER.info("Added new controller: %s (%s)", room_name, ieee)
+        
+        return success
+    
+    async def async_remove_controller(self, controller_id: str) -> bool:
+        """Remove IR controller and all its devices."""
+        await self.async_load()
+        
+        if controller_id not in self._data.get("controllers", {}):
+            _LOGGER.warning("Controller %s not found", controller_id)
+            return False
+        
+        controller_name = self._data["controllers"][controller_id].get("name", controller_id)
+        del self._data["controllers"][controller_id]
+        
+        success = await self.async_save()
+        if success:
+            _LOGGER.info("Removed controller: %s", controller_name)
+        
+        return success
+    
+    async def async_add_device(self, controller_id: str, device_id: str, device_name: str) -> bool:
+        """Add virtual device to controller."""
+        if not self._validate_name(device_name):
+            _LOGGER.warning("Invalid device name: %s", device_name)
+            return False
+        
+        await self.async_load()
+        
+        if controller_id not in self._data.get("controllers", {}):
+            _LOGGER.warning("Controller %s not found", controller_id)
+            return False
+        
+        if device_id in self._data["controllers"][controller_id]["devices"]:
+            _LOGGER.warning("Device %s already exists in controller %s", device_id, controller_id)
+            return False
+        
+        self._data["controllers"][controller_id]["devices"][device_id] = {
+            "name": device_name,
+            "commands": {}
+        }
+        
+        success = await self.async_save()
+        if success:
+            _LOGGER.info("Added device %s to controller %s", device_name, controller_id)
+        
+        return success
+    
+    async def async_remove_device(self, controller_id: str, device_id: str) -> bool:
+        """Remove virtual device from controller."""
+        await self.async_load()
+        
+        if (controller_id not in self._data.get("controllers", {}) or
+            device_id not in self._data["controllers"][controller_id]["devices"]):
+            _LOGGER.warning("Device %s not found in controller %s", device_id, controller_id)
+            return False
+        
+        device_name = self._data["controllers"][controller_id]["devices"][device_id].get("name", device_id)
+        del self._data["controllers"][controller_id]["devices"][device_id]
+        
+        success = await self.async_save()
+        if success:
+            _LOGGER.info("Removed device %s from controller %s", device_name, controller_id)
+        
+        return success
+    
+    async def async_add_command(
+        self, 
+        controller_id: str, 
+        device_id: str, 
+        command_id: str, 
+        command_name: str,
+        ir_code: str
+    ) -> bool:
+        """Add command to device."""
+        if not self._validate_name(command_name) or not ir_code:
+            _LOGGER.warning("Invalid command data: name=%s, code_len=%d", 
+                          command_name, len(ir_code) if ir_code else 0)
+            return False
+        
+        await self.async_load()
+        
+        if (controller_id not in self._data.get("controllers", {}) or
+            device_id not in self._data["controllers"][controller_id]["devices"]):
+            _LOGGER.warning("Device %s not found in controller %s", device_id, controller_id)
+            return False
+        
+        device = self._data["controllers"][controller_id]["devices"][device_id]
+        
+        # Overwrite if command already exists
+        if command_id in device["commands"]:
+            _LOGGER.info("Overwriting existing command %s for device %s", command_id, device_id)
+        
+        device["commands"][command_id] = {
+            "name": command_name,
+            "code": ir_code,
+            "description": f"IR command {command_name} for {device.get('name', device_id)}"
+        }
+        
+        success = await self.async_save()
+        if success:
+            _LOGGER.info("Added command %s to device %s", command_name, device_id)
+        
+        return success
+    
+    async def async_remove_command(self, controller_id: str, device_id: str, command_id: str) -> bool:
+        """Remove command from device."""
+        await self.async_load()
+        
+        if (controller_id not in self._data.get("controllers", {}) or
+            device_id not in self._data["controllers"][controller_id]["devices"] or
+            command_id not in self._data["controllers"][controller_id]["devices"][device_id]["commands"]):
+            _LOGGER.warning("Command %s not found", command_id)
+            return False
+        
+        command_name = self._data["controllers"][controller_id]["devices"][device_id]["commands"][command_id].get("name", command_id)
+        del self._data["controllers"][controller_id]["devices"][device_id]["commands"][command_id]
+        
+        success = await self.async_save()
+        if success:
+            _LOGGER.info("Removed command %s from device %s", command_name, device_id)
+        
+        return success
+    
+    def get_controllers(self) -> List[Dict[str, Any]]:
+        """Get list of all controllers."""
+        if not self._loaded:
+            return []
+        
+        controllers = []
+        for controller_id, controller_data in self._data.get("controllers", {}).items():
+            controllers.append({
+                "id": controller_id,
+                "name": controller_data.get("name", "Unknown Controller"),
+                "ieee": controller_data.get("ieee"),
+                "room_name": controller_data.get("room_name"),
+                "device_count": len(controller_data.get("devices", {}))
+            })
+        
+        return controllers
+    
+    def get_controller(self, controller_id: str) -> Optional[Dict[str, Any]]:
+        """Get controller data."""
+        if not self._loaded:
             return None
-        return self._data[device][command].get("code")
+        
+        return self._data.get("controllers", {}).get(controller_id)
     
-    def is_loaded(self) -> bool:
-        """Проверить, загружены ли данные."""
-        return self._loaded
+    def get_devices(self, controller_id: str) -> List[Dict[str, Any]]:
+        """Get list of devices for controller."""
+        controller = self.get_controller(controller_id)
+        if not controller:
+            return []
+        
+        devices = []
+        for device_id, device_data in controller.get("devices", {}).items():
+            devices.append({
+                "id": device_id,
+                "name": device_data.get("name", "Unknown Device"),
+                "command_count": len(device_data.get("commands", {}))
+            })
+        
+        return devices
     
-    async def async_add_device(self, device: str) -> bool:
-        """Добавить новое устройство."""
-        # Валидация имени устройства
-        if not device or device == "none":
-            _LOGGER.warning("Невозможно добавить устройство с пустым именем")
-            return False
+    def get_device(self, controller_id: str, device_id: str) -> Optional[Dict[str, Any]]:
+        """Get device data."""
+        controller = self.get_controller(controller_id)
+        if not controller:
+            return None
         
-        # Проверка на допустимые символы
-        if not device.replace('_', '').replace('-', '').replace(' ', '').isalnum():
-            _LOGGER.warning("Имя устройства содержит недопустимые символы: %s", device)
-            return False
-        
-        # Ограничение длины имени
-        if len(device) > 50:
-            _LOGGER.warning("Имя устройства слишком длинное: %s", device)
-            return False
-        
-        # Загружаем данные, если это первое обращение
-        if not self._loaded:
-            await self.async_load()
-        
-        if device in (self._data or {}):
-            _LOGGER.warning("Устройство %s уже существует", device)
-            return False
-        
-        if self._data is None:
-            self._data = {}
-        
-        self._data[device] = {}
-        success = await self.async_save()
-        
-        if success:
-            _LOGGER.info("Добавлено новое устройство: %s", device)
-            try:
-                await async_create_notification(
-                    self.hass,
-                    f"Устройство '{device}' успешно добавлено",
-                    "IR Remote: Устройство добавлено",
-                    f"{DOMAIN}_device_added"
-                )
-            except Exception as e:
-                _LOGGER.debug("Could not create notification: %s", e)
-        
-        return success
+        return controller.get("devices", {}).get(device_id)
     
-    async def async_add_command(self, device: str, command: str, code: str) -> bool:
-        """Добавить новую команду для устройства."""
-        # Валидация параметров
-        if not device or not command or device == "none" or command == "none" or not code:
-            _LOGGER.warning("Невозможно добавить команду: недостаточно данных (device=%s, command=%s, code_len=%s)", 
-                          device, command, len(code) if code else 0)
-            return False
+    def get_commands(self, controller_id: str, device_id: str) -> List[Dict[str, Any]]:
+        """Get list of commands for device."""
+        device = self.get_device(controller_id, device_id)
+        if not device:
+            return []
         
-        # Проверка на допустимые символы в имени команды
-        if not command.replace('_', '').replace('-', '').replace(' ', '').replace('+', '').isalnum():
-            _LOGGER.warning("Имя команды содержит недопустимые символы: %s", command)
-            return False
+        commands = []
+        for command_id, command_data in device.get("commands", {}).items():
+            commands.append({
+                "id": command_id,
+                "name": command_data.get("name", "Unknown Command"),
+                "code": command_data.get("code", "")
+            })
         
-        # Ограничение длины
-        if len(command) > 50:
-            _LOGGER.warning("Имя команды слишком длинное: %s", command)
-            return False
-        
-        # Загружаем данные, если это первое обращение
-        if not self._loaded:
-            await self.async_load()
-        
-        if self._data is None:
-            self._data = {}
-        
-        # Создаем устройство, если его нет
-        if device not in self._data:
-            self._data[device] = {}
-            _LOGGER.info("Создано новое устройство при добавлении команды: %s", device)
-        
-        # Проверяем, не существует ли уже такая команда
-        if command in self._data[device]:
-            _LOGGER.warning("Команда %s для устройства %s уже существует, перезаписываем", command, device)
-        
-        self._data[device][command] = {
-            "code": code,
-            "name": f"{device.upper()} {command.replace('_', ' ').title()}",
-            "description": f"IR code for {device} {command}"
-        }
-        
-        success = await self.async_save()
-        
-        if success:
-            _LOGGER.info("✅ Добавлена новая команда %s для устройства %s (код длиной %d символов)", 
-                        command, device, len(code))
-        else:
-            _LOGGER.error("❌ Не удалось сохранить команду %s для устройства %s", command, device)
-        
-        return success
+        return commands
     
-    async def async_remove_device(self, device: str) -> bool:
-        """Удалить устройство и все его команды."""
-        if not device or device == "none":
-            _LOGGER.warning("Невозможно удалить устройство: пустое имя")
+    def get_command_code(self, controller_id: str, device_id: str, command_id: str) -> Optional[str]:
+        """Get IR code for specific command."""
+        device = self.get_device(controller_id, device_id)
+        if not device:
+            return None
+        
+        command = device.get("commands", {}).get(command_id)
+        return command.get("code") if command else None
+    
+    async def async_export_data(self) -> Dict[str, Any]:
+        """Export all data."""
+        await self.async_load()
+        return self._data.copy()
+    
+    async def async_import_data(self, data: Dict[str, Any]) -> bool:
+        """Import data (replaces existing)."""
+        if not isinstance(data, dict) or "controllers" not in data:
+            _LOGGER.error("Invalid import data format")
             return False
         
-        # Загружаем данные, если это первое обращение
-        if not self._loaded:
-            await self.async_load()
-        
-        if device not in (self._data or {}):
-            _LOGGER.warning("Устройство %s не найдено", device)
-            return False
-        
-        # Удаляем устройство
-        del self._data[device]
-        success = await self.async_save()
-        
-        if success:
-            _LOGGER.info("Удалено устройство: %s", device)
-            try:
-                await async_create_notification(
-                    self.hass,
-                    f"Устройство '{device}' удалено",
-                    "IR Remote: Устройство удалено",
-                    f"{DOMAIN}_device_removed"
-                )
-            except Exception as e:
-                _LOGGER.debug("Could not create notification: %s", e)
-        
-        return success
-
-    async def async_remove_command(self, device: str, command: str) -> bool:
-        """Удалить команду для устройства."""
-        if not device or not command or device == "none" or command == "none":
-            _LOGGER.warning("Невозможно удалить команду: недостаточно данных")
-            return False
-        
-        # Загружаем данные, если это первое обращение
-        if not self._loaded:
-            await self.async_load()
-        
-        if device not in (self._data or {}) or command not in self._data[device]:
-            _LOGGER.warning("Команда %s для устройства %s не найдена", command, device)
-            return False
-        
-        # Удаляем команду
-        del self._data[device][command]
-        
-        # Если у устройства не осталось команд, удаляем само устройство
-        if not self._data[device]:
-            del self._data[device]
-            _LOGGER.info("Устройство %s удалено так как не осталось команд", device)
-        
-        success = await self.async_save()
-        
-        if success:
-            _LOGGER.info("Удалена команда %s для устройства %s", command, device)
-        
-        return success
-
-    async def async_export_config(self) -> dict:
-        """Экспортировать конфигурацию устройств и команд."""
-        # Загружаем данные, если это первое обращение
-        if not self._loaded:
-            await self.async_load()
-        
-        return {
-            "version": "1.0",
-            "devices": self._data or {}
-        }
-
-    async def async_import_config(self, config: dict) -> bool:
-        """Импортировать конфигурацию устройств и команд."""
-        if not isinstance(config, dict) or "devices" not in config:
-            _LOGGER.error("Неверный формат конфигурации для импорта")
-            return False
-        
-        # Создаем резервную копию текущих данных
-        backup = self._data.copy() if self._data else {}
+        # Backup current data
+        backup = self._data.copy()
         
         try:
-            # Загружаем данные, если это первое обращение
-            if not self._loaded:
-                await self.async_load()
-            
-            if self._data is None:
-                self._data = {}
-            
-            # Импортируем устройства
-            imported_count = 0
-            for device, commands in config["devices"].items():
-                if device not in self._data:
-                    self._data[device] = {}
-                
-                for command, command_data in commands.items():
-                    if isinstance(command_data, dict) and "code" in command_data:
-                        self._data[device][command] = command_data
-                        imported_count += 1
-                    else:
-                        _LOGGER.warning("Пропущена некорректная команда %s для устройства %s", command, device)
-            
-            # Сохраняем импортированные данные
+            self._data = data
             success = await self.async_save()
             
             if success:
-                _LOGGER.info("Импортировано %d команд", imported_count)
-                try:
-                    await async_create_notification(
-                        self.hass,
-                        f"Импортировано {imported_count} команд",
-                        "IR Remote: Импорт завершен",
-                        f"{DOMAIN}_import_complete"
-                    )
-                except Exception as e:
-                    _LOGGER.debug("Could not create notification: %s", e)
+                _LOGGER.info("Data imported successfully")
             else:
-                # Восстанавливаем резервную копию
+                # Restore backup on failure
                 self._data = backup
-                _LOGGER.error("Ошибка сохранения импортированных данных")
+                _LOGGER.error("Import failed, restored backup")
             
             return success
             
         except Exception as e:
-            # Восстанавливаем резервную копию
+            # Restore backup on error
             self._data = backup
-            _LOGGER.error("Ошибка импорта конфигурации: %s", e)
+            _LOGGER.error("Import error: %s", e)
             return False
-
-
-async def update_ir_data(hass: HomeAssistant) -> dict:
-    """Обновление данных ИК-пульта."""
-    _LOGGER.debug("Обновление данных IR")
-    
-    # Базовая структура данных
-    data = {
-        "devices": ["none"],
-        "commands": {"none": ["none"]},
-        "codes": {}
-    }
-    
-    try:
-        # Получаем хранилище данных
-        ir_data = hass.data[DOMAIN].get("data")
-        if not ir_data:
-            _LOGGER.warning("Хранилище данных IR не инициализировано, возвращаем базовые данные")
-            return data
-        
-        # Загружаем данные
-        await ir_data.async_load()
-        
-        # Проверяем, что данные загружены
-        if not ir_data.is_loaded():
-            _LOGGER.warning("Данные IR не загружены, возвращаем базовые данные")
-            return data
-        
-        # Получаем список устройств
-        devices = ir_data.get_devices()
-        if devices:
-            data["devices"] = ["none"] + devices
-            _LOGGER.debug("Устройства из storage: %s", devices)
-        
-        # Получаем списки команд для каждого устройства
-        for device in devices:
-            commands = ir_data.get_commands(device)
-            if commands:
-                data["commands"][device] = ["none"] + commands
-                _LOGGER.debug("Команды для %s: %s", device, commands)
-        
-        # Сохраняем все коды для удобства доступа
-        data["codes"] = ir_data._data or {}
-        
-        _LOGGER.info("Данные IR успешно обновлены: %d устройств", len(devices))
-        
-    except Exception as e:
-        _LOGGER.error("Ошибка при обновлении данных IR: %s", e, exc_info=True)
-    
-    return data
-
-
-async def setup_ir_data_coordinator(hass: HomeAssistant) -> DataUpdateCoordinator:
-    """Настройка координатора данных IR."""
-    _LOGGER.info("Настройка координатора данных IR")
-    
-    # Инициализация хранилища данных
-    ir_data = IRRemoteData(hass)
-    hass.data[DOMAIN]["data"] = ir_data
-    
-    # Предварительно загружаем данные
-    await ir_data.async_load()
-    _LOGGER.info("Данные IR предварительно загружены")
-    
-    # Инициализация координатора данных
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name="ir_remote_data",
-        update_method=lambda: update_ir_data(hass),
-        update_interval=None,  # Только ручные обновления
-    )
-    
-    # Первоначальная загрузка данных
-    await coordinator.async_refresh()
-    _LOGGER.info("Координатор данных IR настроен и обновлен")
-    
-    return coordinator

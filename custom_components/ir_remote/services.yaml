@@ -1,59 +1,123 @@
-get_data:
-  name: Получить данные
-  description: "Получить данные об устройствах и командах ИК-пульта"
-
-learn_code:
-  name: Обучение ИК-коду
-  description: "Перевести ИК-пульт в режим обучения и сохранить код"
+learn_command:
+  name: Обучить команду
+  description: Переводит ИК-пульт в режим обучения для сохранения новой команды
   fields:
-    device:
-      name: Устройство
-      description: Имя устройства
+    controller_id:
+      name: ID пульта
+      description: Идентификатор ИК-пульта (config entry ID)
       required: true
       selector:
         text:
-    button:
-      name: Кнопка
-      description: Имя кнопки
+    device:
+      name: Устройство
+      description: ID устройства для команды
+      required: true
+      selector:
+        text:
+    command:
+      name: Команда
+      description: ID команды для обучения
       required: true
       selector:
         text:
 
 send_code:
   name: Отправить ИК-код
-  description: "Отправить ИК-код вручную"
+  description: Отправляет ИК-код напрямую через указанный пульт
   fields:
-    code:
-      name: Код
-      description: ИК-код для отправки
+    controller_id:
+      name: ID пульта
+      description: Идентификатор ИК-пульта (config entry ID)
       required: true
       selector:
         text:
+    code:
+      name: ИК-код
+      description: ИК-код для отправки (base64 строка)
+      required: true
+      selector:
+        text:
+          multiline: true
 
 send_command:
   name: Отправить команду
-  description: "Отправить команду для выбранного устройства"
+  description: Отправляет команду по имени устройства и команды
   fields:
+    controller_id:
+      name: ID пульта
+      description: Идентификатор ИК-пульта (config entry ID)
+      required: true
+      selector:
+        text:
     device:
       name: Устройство
-      description: Имя устройства
+      description: ID устройства
       required: true
       selector:
         text:
     command:
       name: Команда
-      description: Команда для отправки
+      description: ID команды
       required: true
       selector:
         text:
 
 add_device:
   name: Добавить устройство
-  description: "Добавить новое устройство в список устройств ИК-пульта"
+  description: Добавляет новое виртуальное устройство к ИК-пульту
   fields:
-    name:
-      name: Имя устройства
-      description: Имя нового устройства
+    controller_id:
+      name: ID пульта
+      description: Идентификатор ИК-пульта (config entry ID)
       required: true
+      selector:
+        text:
+    device_name:
+      name: Название устройства
+      description: Название нового устройства (например, Телевизор)
+      required: true
+      selector:
+        text:
+
+add_command:
+  name: Добавить команду
+  description: Добавляет готовую команду с ИК-кодом к устройству
+  fields:
+    controller_id:
+      name: ID пульта
+      description: Идентификатор ИК-пульта (config entry ID)
+      required: true
+      selector:
+        text:
+    device:
+      name: Устройство
+      description: ID устройства
+      required: true
+      selector:
+        text:
+    command_name:
+      name: Название команды
+      description: Название новой команды (например, Включить)
+      required: true
+      selector:
+        text:
+    code:
+      name: ИК-код
+      description: ИК-код для команды (base64 строка)
+      required: true
+      selector:
+        text:
+          multiline: true
+
+get_data:
+  name: Получить данные
+  description: Возвращает данные об ИК-пультах, устройствах и командах
+  response:
+    type: action
+  fields:
+    controller_id:
+      name: ID пульта
+      description: ID конкретного пульта (если не указан, возвращает данные всех пультов)
+      required: false
       selector:
         text:

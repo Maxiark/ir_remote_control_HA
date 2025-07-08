@@ -1,96 +1,215 @@
 {
     "config": {
         "step": {
-            "user": {
-                "title": "IR Remote Setup",
-                "description": "Select your IR Remote device from ZHA",
+            "init": {
+                "title": "IR Remote - Management",
+                "description": "Choose an action to manage IR controllers and devices.\n\nCurrent number of controllers: {controllers_count}",
                 "data": {
-                    "ieee": "ZHA Device",
-                    "endpoint_id": "Endpoint ID",
-                    "cluster_id": "Cluster ID"
+                    "action": "Action"
+                },
+                "data_description": {
+                    "action": "Select what you want to do"
                 }
             },
-            "clusters": {
-                "title": "IR Remote Configuration",
-                "description": "Configure endpoint and cluster IDs",
+            "add_controller": {
+                "title": "Add IR Controller",
+                "description": "Select a ZHA device to use as IR controller and specify the room.",
                 "data": {
+                    "ieee": "ZHA Device",
+                    "room_name": "Room Name",
                     "endpoint_id": "Endpoint ID",
                     "cluster_id": "Cluster ID"
+                },
+                "data_description": {
+                    "ieee": "Select IR controller from ZHA devices list",
+                    "room_name": "For example: Living Room, Bedroom, Kitchen",
+                    "endpoint_id": "Usually 1, change only if you know what you're doing",
+                    "cluster_id": "Usually 57348, change only if you know what you're doing"
                 }
+            },
+            "select_controller": {
+                "title": "Select IR Controller",
+                "description": "Choose IR controller to add device to.",
+                "data": {
+                    "controller_id": "IR Controller"
+                }
+            },
+            "add_device": {
+                "title": "Add Device",
+                "description": "Add a new virtual device to controller \"{controller_name}\".",
+                "data": {
+                    "device_name": "Device Name"
+                },
+                "data_description": {
+                    "device_name": "For example: TV, Audio System, Air Conditioner"
+                }
+            },
+            "select_controller_for_command": {
+                "title": "Select IR Controller",
+                "description": "Choose IR controller to add command to.",
+                "data": {
+                    "controller_id": "IR Controller"
+                }
+            },
+            "select_device_for_command": {
+                "title": "Select Device",
+                "description": "Choose device to add command to.",
+                "data": {
+                    "device_id": "Device"
+                }
+            },
+            "add_command": {
+                "title": "Add Command",
+                "description": "Add a new command to device \"{device_name}\" (controller: \"{controller_name}\").",
+                "data": {
+                    "command_name": "Command Name"
+                },
+                "data_description": {
+                    "command_name": "For example: Power On, Power Off, Volume Up, Volume Down"
+                }
+            },
+            "learn_command": {
+                "title": "Learn Command",
+                "description": "Now learning command \"{command_name}\" for device \"{device_name}\".\n\n1. Make sure IR controller \"{controller_name}\" is pointed at the target device\n2. Click \"Ready to Learn\"\n3. Immediately press the desired button on the original remote\n\nThe command will be automatically saved after receiving the IR signal.",
+                "data": {
+                    "ready": "Ready to Learn"
+                }
+            },
+            "manage": {
+                "title": "Data Management",
+                "description": "Current IR Remote status:\n\n• Controllers: {controllers_count}\n• Devices: {devices_count}\n• Commands: {commands_count}\n\nUse Developer Tools → Services for programmatic device and command management."
             }
         },
         "error": {
             "device_not_found": "Selected device not found in ZHA",
-            "zha_not_found": "ZHA integration not found"
+            "zha_not_found": "ZHA integration not found or zha_toolkit unavailable",
+            "device_exists": "Device with this name already exists",
+            "command_exists": "Command with this name already exists",
+            "invalid_name": "Invalid name. Use only letters, numbers, spaces, hyphens and underscores",
+            "learn_timeout": "IR signal waiting timeout expired",
+            "learn_failed": "Failed to receive IR signal",
+            "add_device_failed": "Failed to add device",
+            "no_devices": "This controller has no devices. Add a device first."
         },
         "abort": {
-            "single_instance_allowed": "Only a single instance is allowed"
+            "single_instance_allowed": "Only one instance of the integration is allowed"
         }
     },
     "entity": {
-        "select": {
-            "learn_device": {
-                "name": "Learning Device",
-                "state": {
-                    "none": "Choose device"
-                }
-            },
-            "send_device": {
-                "name": "Send Device",
-                "state": {
-                    "none": "Choose device"
-                }
-            },
-            "send_command": {
-                "name": "Command",
-                "state": {
-                    "none": "Choose command"
-                }
-            }
-        },
-        "text": {
-            "button_name": {
-                "name": "Button Name"
-            },
-            "new_device_name": {
-                "name": "New Device Name"
-            }
-        },
         "button": {
-            "learn_button": {
-                "name": "Start Learning"
+            "add_command": {
+                "name": "Add Command"
             },
-            "send_button": {
-                "name": "Send Command"
-            },
-            "add_device_button": {
-                "name": "Add Device"
+            "device_command": {
+                "name": "{command_name}"
             }
         }
     },
     "services": {
-        "learn_code": {
-            "name": "Learn IR Code",
-            "description": "Put IR Remote in learning mode and save code",
+        "learn_command": {
+            "name": "Learn Command",
+            "description": "Puts IR controller into learning mode to save a new command",
             "fields": {
+                "controller_id": {
+                    "name": "Controller ID",
+                    "description": "IR controller identifier"
+                },
                 "device": {
                     "name": "Device",
-                    "description": "Device name"
+                    "description": "Device ID for the command"
                 },
-                "button": {
-                    "name": "Button",
-                    "description": "Button name"
+                "command": {
+                    "name": "Command",
+                    "description": "Command ID to learn"
                 }
             }
         },
         "send_code": {
             "name": "Send IR Code",
-            "description": "Send IR code manually",
+            "description": "Sends IR code directly through specified controller",
             "fields": {
+                "controller_id": {
+                    "name": "Controller ID",
+                    "description": "IR controller identifier"
+                },
                 "code": {
-                    "name": "Code",
+                    "name": "IR Code",
                     "description": "IR code to send"
                 }
+            }
+        },
+        "send_command": {
+            "name": "Send Command",
+            "description": "Sends command by device and command name",
+            "fields": {
+                "controller_id": {
+                    "name": "Controller ID",
+                    "description": "IR controller identifier"
+                },
+                "device": {
+                    "name": "Device",
+                    "description": "Device ID"
+                },
+                "command": {
+                    "name": "Command", 
+                    "description": "Command ID"
+                }
+            }
+        },
+        "add_device": {
+            "name": "Add Device",
+            "description": "Adds a new virtual device to IR controller",
+            "fields": {
+                "controller_id": {
+                    "name": "Controller ID",
+                    "description": "IR controller identifier"
+                },
+                "device_name": {
+                    "name": "Device Name",
+                    "description": "Name of the new device"
+                }
+            }
+        },
+        "add_command": {
+            "name": "Add Command",
+            "description": "Adds ready command with IR code to device",
+            "fields": {
+                "controller_id": {
+                    "name": "Controller ID",
+                    "description": "IR controller identifier"
+                },
+                "device": {
+                    "name": "Device",
+                    "description": "Device ID"
+                },
+                "command_name": {
+                    "name": "Command Name",
+                    "description": "Name of the new command"
+                },
+                "code": {
+                    "name": "IR Code",
+                    "description": "IR code for the command"
+                }
+            }
+        },
+        "get_data": {
+            "name": "Get Data",
+            "description": "Returns data about IR controllers, devices and commands",
+            "fields": {
+                "controller_id": {
+                    "name": "Controller ID",
+                    "description": "Specific controller ID (optional)"
+                }
+            }
+        }
+    },
+    "selector": {
+        "action": {
+            "options": {
+                "add_controller": "Add new IR controller",
+                "add_device": "Add virtual device", 
+                "add_command": "Add command to device",
+                "manage": "Manage existing data"
             }
         }
     }
