@@ -312,6 +312,50 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             })
         )
     
+    async def async_step_add_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Handle adding command to device."""
+        errors = {}
+        
+        if user_input is not None:
+            command_name = user_input[CONF_COMMAND_NAME].strip()
+            device_name = user_input[CONF_DEVICE_NAME].strip()
+            
+            # Basic validation
+            if not command_name or len(command_name) > 50:
+                errors[CONF_COMMAND_NAME] = ERROR_INVALID_NAME
+            elif not device_name or len(device_name) > 50:
+                errors[CONF_DEVICE_NAME] = ERROR_INVALID_NAME
+            else:
+                # Create entry for command addition
+                return self.async_create_entry(
+                    title=f"Команда {command_name} добавлена для обучения",
+                    data={
+                        "action": "command_learning_started",
+                        CONF_CONTROLLER_ID: self.flow_data.get(CONF_CONTROLLER_ID),
+                        CONF_DEVICE_NAME: device_name,
+                        CONF_COMMAND_NAME: command_name
+                    }
+                )
+        
+        # Get controller name for display
+        controller_name = "Unknown"
+        controller_entry = self.hass.config_entries.async_get_entry(self.flow_data.get(CONF_CONTROLLER_ID))
+        if controller_entry:
+            controller_name = controller_entry.title
+        
+        return self.async_show_form(
+            step_id="add_command",
+            data_schema=vol.Schema({
+                vol.Required(CONF_DEVICE_NAME): cv.string,
+                vol.Required(CONF_COMMAND_NAME): cv.string,
+            }),
+            errors=errors,
+            description_placeholders={
+                "controller_name": controller_name,
+                "device_name": "Новое устройство"
+            }
+        )
+    
     async def async_step_manage(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle management of existing data."""
         # Get statistics from config entries
