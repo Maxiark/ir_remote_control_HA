@@ -19,9 +19,6 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Storage lock to prevent concurrent access
-_storage_lock = asyncio.Lock()
-
 
 class IRRemoteStorage:
     """Class for managing IR Remote data through Storage API."""
@@ -45,41 +42,64 @@ class IRRemoteStorage:
         if self._loaded:
             return self._data
         
-        async with _storage_lock:
-            try:
-                # First attempt migration from old format
-                await self._migrate_old_data()
-                
-                # Load from Storage API
-                stored_data = await self.store.async_load()
-                
-                if stored_data is None:
-                    _LOGGER.info("No existing IR data, initializing empty storage")
-                    self._data = {"controllers": {}}
-                    await self.async_save()
-                else:
-                    self._data = stored_data
-                    _LOGGER.info("IR data loaded: %d controllers", len(self._data.get("controllers", {})))
-                
-                self._loaded = True
-                
-            except Exception as e:
-                _LOGGER.error("Error loading IR data: %s", e, exc_info=True)
+        try:
+            _LOGGER.info("Storage: Starting data load...")
+            
+            # First attempt migration from old format
+            _LOGGER.info("Storage: Checking for migration...")
+            await self._migrate_old_data()
+            _LOGGER.info("Storage: Migration check completed")
+            
+            # Load from Storage API
+            _LOGGER.info("Storage: Loading from Store API...")
+            stored_data = await self.store.async_load()
+            _LOGGER.info("Storage: Store API load completed, data exists: %s", stored_data is not None)
+            
+            if stored_data is None:
+                _LOGGER.info("Storage: No existing IR data, initializing empty storage")
                 self._data = {"controllers": {}}
-                self._loaded = True
+                _LOGGER.info("Storage: About to save initial empty data...")
+                
+                # Try to save, but don't fail if it doesn't work
+                save_success = await self.async_save()
+                if save_success:
+                    _LOGGER.info("Storage: Initial save completed")
+                else:
+                    _LOGGER.warning("Storage: Initial save failed, continuing with memory-only storage")
+            else:
+                self._data = stored_data
+                _LOGGER.info("Storage: IR data loaded: %d controllers", len(self._data.get("controllers", {})))
+            
+            self._loaded = True
+            _LOGGER.info("Storage: Load process completed successfully")
+            
+        except Exception as e:
+            _LOGGER.error("Storage: Error loading IR data: %s", e, exc_info=True)
+            self._data = {"controllers": {}}
+            self._loaded = True
         
         return self._data
     
     async def async_save(self) -> bool:
         """Save data to Storage API."""
-        async with _storage_lock:
-            try:
-                await self.store.async_save(self._data)
-                _LOGGER.debug("IR data saved successfully")
-                return True
-            except Exception as e:
-                _LOGGER.error("Error saving IR data: %s", e, exc_info=True)
-                return False
+        try:
+            _LOGGER.info("Storage: Starting save operation...")
+            
+            # Add timeout to prevent infinite hanging
+            import asyncio
+            await asyncio.wait_for(
+                self.store.async_save(self._data), 
+                timeout=30.0  # 30 seconds timeout
+            )
+            
+            _LOGGER.info("Storage: Save operation completed successfully")
+            return True
+        except asyncio.TimeoutError:
+            _LOGGER.error("Storage: Save operation timed out after 30 seconds")
+            return False
+        except Exception as e:
+            _LOGGER.error("Storage: Error saving IR data: %s", e, exc_info=True)
+            return False
     
     async def _migrate_old_data(self) -> None:
         """Migrate data from old ir_codes.json format."""
