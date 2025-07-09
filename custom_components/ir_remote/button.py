@@ -183,22 +183,65 @@ class IRRemoteCommandButton(ButtonEntity):
         _LOGGER.info("Pressed button: %s - %s", self._device_name, self._command_name)
         
         try:
-            # Send IR code through service
-            await self.hass.services.async_call(
-                DOMAIN,
-                SERVICE_SEND_CODE,
-                {
-                    ATTR_CONTROLLER_ID: self._controller_id,
-                    ATTR_CODE: self._command_code,
-                },
-                blocking=True
-            )
-            _LOGGER.debug("Successfully sent IR code for %s - %s", 
-                         self._device_name, self._command_name)
-            
+            # Try using service first, fallback to direct ZHA call
+            if self.hass.services.has_service("ir_remote", "send_code"):
+                await self.hass.services.async_call(
+                    "ir_remote",
+                    "send_code",
+                    {
+                        "controller_id": self._controller_id,
+                        "code": self._command_code,
+                    },
+                    blocking=True
+                )
+                _LOGGER.debug("Successfully sent IR code via service for %s - %s", 
+                             self._device_name, self._command_name)
+            else:
+                # Direct ZHA call as fallback
+                await self._send_code_directly()
+                
         except Exception as e:
             _LOGGER.error("Failed to send IR code for %s - %s: %s", 
                          self._device_name, self._command_name, e)
+    
+    async def _send_code_directly(self) -> None:
+        """Send IR code directly via ZHA."""
+        try:
+            # Get controller data from integration
+            entry_data = self.hass.data.get("ir_remote", {}).get(self._controller_id)
+            if not entry_data:
+                _LOGGER.error("Controller data not found for %s", self._controller_id)
+                return
+            
+            storage = entry_data["storage"]
+            controller = storage.get_controller(self._controller_id)
+            
+            if not controller:
+                _LOGGER.error("Controller not found in storage: %s", self._controller_id)
+                return
+            
+            # Send ZHA command directly (like in your script)
+            await self.hass.services.async_call(
+                "zha",
+                "issue_zigbee_cluster_command",
+                {
+                    "ieee": controller["ieee"],
+                    "endpoint_id": controller["endpoint_id"],
+                    "cluster_id": controller["cluster_id"],
+                    "cluster_type": "in",
+                    "command": 2,  # Command for sending (as in your script)
+                    "command_type": "server",
+                    "params": {
+                        "code": self._command_code
+                    }
+                },
+                blocking=True
+            )
+            _LOGGER.info("Successfully sent IR code directly via ZHA for %s - %s", 
+                        self._device_name, self._command_name)
+            
+        except Exception as e:
+            _LOGGER.error("Failed to send IR code directly: %s", e)
 
 
 class IRRemoteAddCommandButton(ButtonEntity):
