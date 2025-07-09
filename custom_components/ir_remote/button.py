@@ -15,7 +15,6 @@ from .const import (
     SERVICE_SEND_CODE,
     MANUFACTURER,
     MODEL_VIRTUAL_DEVICE,
-    TRANSLATION_KEY_ADD_COMMAND,
     TRANSLATION_KEY_DEVICE_COMMAND,
 )
 from .data import IRRemoteStorage
@@ -29,15 +28,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up IR Remote button entities."""
-    _LOGGER.info("Button platform: Starting setup for: %s", config_entry.title)
+    _LOGGER.info("Setting up IR Remote buttons for: %s", config_entry.title)
     
     # Get storage for this controller
     entry_data = hass.data[DOMAIN].get(config_entry.entry_id)
     if not entry_data:
-        _LOGGER.error("Button platform: No entry data found for %s", config_entry.entry_id)
+        _LOGGER.error("No entry data found for %s", config_entry.entry_id)
         return
-    
-    _LOGGER.info("Button platform: Got entry data")
     
     storage: IRRemoteStorage = entry_data["storage"]
     controller_id = config_entry.entry_id
@@ -45,37 +42,24 @@ async def async_setup_entry(
     # Get controller data
     controller = storage.get_controller(controller_id)
     if not controller:
-        _LOGGER.warning("Button platform: No controller data found for %s", controller_id)
+        _LOGGER.warning("No controller data found for %s", controller_id)
         return
-    
-    _LOGGER.info("Button platform: Got controller data")
     
     buttons: List[ButtonEntity] = []
     
     # Get all devices for this controller
     devices = storage.get_devices(controller_id)
-    _LOGGER.info("Button platform: Found %d devices for controller %s", len(devices), controller_id)
+    _LOGGER.debug("Found %d devices for controller %s", len(devices), controller_id)
     
     for device in devices:
         device_id = device["id"]
         device_name = device["name"]
         
-        _LOGGER.debug("Button platform: Processing device: %s (%s)", device_name, device_id)
-        
-        # Create "Add Command" button for this device
-        add_command_button = IRRemoteAddCommandButton(
-            hass=hass,
-            config_entry=config_entry,
-            controller_id=controller_id,
-            device_id=device_id,
-            device_name=device_name,
-        )
-        buttons.append(add_command_button)
-        _LOGGER.debug("Button platform: Created add command button for device %s", device_name)
+        _LOGGER.debug("Processing device: %s (%s)", device_name, device_id)
         
         # Get all commands for this device
         commands = storage.get_commands(controller_id, device_id)
-        _LOGGER.debug("Button platform: Found %d commands for device %s", len(commands), device_name)
+        _LOGGER.debug("Found %d commands for device %s", len(commands), device_name)
         
         for command in commands:
             command_id = command["id"]
@@ -94,14 +78,12 @@ async def async_setup_entry(
                 command_code=command_code,
             )
             buttons.append(command_button)
-            _LOGGER.debug("Button platform: Created command button: %s - %s", device_name, command_name)
+            _LOGGER.debug("Created command button: %s - %s", device_name, command_name)
     
-    _LOGGER.info("Button platform: Created %d buttons for controller %s", len(buttons), controller_id)
+    _LOGGER.info("Created %d buttons for controller %s", len(buttons), controller_id)
     
     # Add all buttons
-    _LOGGER.info("Button platform: Adding entities to HA...")
     async_add_entities(buttons)
-    _LOGGER.info("Button platform: Setup completed for %s", config_entry.title)
 
 
 class IRRemoteCommandButton(ButtonEntity):
@@ -183,119 +165,19 @@ class IRRemoteCommandButton(ButtonEntity):
         _LOGGER.info("Pressed button: %s - %s", self._device_name, self._command_name)
         
         try:
-            # Try using service first, fallback to direct ZHA call
-            if self.hass.services.has_service("ir_remote", "send_code"):
-                await self.hass.services.async_call(
-                    "ir_remote",
-                    "send_code",
-                    {
-                        "controller_id": self._controller_id,
-                        "code": self._command_code,
-                    },
-                    blocking=True
-                )
-                _LOGGER.debug("Successfully sent IR code via service for %s - %s", 
-                             self._device_name, self._command_name)
-            else:
-                # Direct ZHA call as fallback
-                await self._send_code_directly()
-                
-        except Exception as e:
-            _LOGGER.error("Failed to send IR code for %s - %s: %s", 
-                         self._device_name, self._command_name, e)
-    
-    async def _send_code_directly(self) -> None:
-        """Send IR code directly via ZHA."""
-        try:
-            # Get controller data from integration
-            entry_data = self.hass.data.get("ir_remote", {}).get(self._controller_id)
-            if not entry_data:
-                _LOGGER.error("Controller data not found for %s", self._controller_id)
-                return
-            
-            storage = entry_data["storage"]
-            controller = storage.get_controller(self._controller_id)
-            
-            if not controller:
-                _LOGGER.error("Controller not found in storage: %s", self._controller_id)
-                return
-            
-            # Send ZHA command directly (like in your script)
+            # Send IR code through service
             await self.hass.services.async_call(
-                "zha",
-                "issue_zigbee_cluster_command",
+                DOMAIN,
+                SERVICE_SEND_CODE,
                 {
-                    "ieee": controller["ieee"],
-                    "endpoint_id": controller["endpoint_id"],
-                    "cluster_id": controller["cluster_id"],
-                    "cluster_type": "in",
-                    "command": 2,  # Command for sending (as in your script)
-                    "command_type": "server",
-                    "params": {
-                        "code": self._command_code
-                    }
+                    ATTR_CONTROLLER_ID: self._controller_id,
+                    ATTR_CODE: self._command_code,
                 },
                 blocking=True
             )
-            _LOGGER.info("Successfully sent IR code directly via ZHA for %s - %s", 
-                        self._device_name, self._command_name)
+            _LOGGER.debug("Successfully sent IR code for %s - %s", 
+                         self._device_name, self._command_name)
             
         except Exception as e:
-            _LOGGER.error("Failed to send IR code directly: %s", e)
-
-
-class IRRemoteAddCommandButton(ButtonEntity):
-    """Button entity for adding new commands."""
-    
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        config_entry: ConfigEntry,
-        controller_id: str,
-        device_id: str,
-        device_name: str,
-    ) -> None:
-        """Initialize the add command button."""
-        self.hass = hass
-        self.config_entry = config_entry
-        self._controller_id = controller_id
-        self._device_id = device_id
-        self._device_name = device_name
-        
-        # Entity attributes
-        self._attr_unique_id = f"{DOMAIN}_{controller_id}_{device_id}_add_command"
-        self._attr_name = f"Добавить команду"
-        self._attr_translation_key = TRANSLATION_KEY_ADD_COMMAND
-        self._attr_should_poll = False
-        
-        # Device info - link to virtual device
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{controller_id}_{device_id}")},
-            name=device_name,
-            manufacturer=MANUFACTURER,
-            model=MODEL_VIRTUAL_DEVICE,
-            via_device=(DOMAIN, controller_id),
-        )
-        
-        _LOGGER.debug("Initialized add command button for device: %s", device_name)
-    
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return True
-    
-    @property
-    def icon(self) -> str:
-        """Return the icon for the button."""
-        return "mdi:plus-circle"
-    
-    async def async_press(self) -> None:
-        """Handle button press - show instructions for adding command."""
-        _LOGGER.info("Pressed add command button for device: %s", self._device_name)
-        
-        # For now, just log the action
-        # Users will need to use config flow or services to add commands
-        _LOGGER.info("To add commands, use the integration configuration or Developer Tools services")
-        
-        # TODO: Future improvement - create a service call or notification
-        # For now, this is a placeholder for manual command addition
+            _LOGGER.error("Failed to send IR code for %s - %s: %s", 
+                         self._device_name, self._command_name, e)

@@ -34,8 +34,6 @@ STEP_INIT = "init"
 STEP_SELECT_CONTROLLER = "select_controller"
 STEP_ADD_CONTROLLER = "add_controller"
 STEP_ADD_DEVICE = "add_device"
-STEP_SELECT_CONTROLLER_FOR_COMMAND = "select_controller_for_command"
-STEP_SELECT_DEVICE_FOR_COMMAND = "select_device_for_command"
 STEP_ADD_COMMAND = "add_command"
 STEP_LEARN_COMMAND = "learn_command"
 STEP_MANAGE = "manage"
@@ -77,7 +75,6 @@ STORAGE_KEY = "ir_remote_data"
 
 # Entity naming patterns
 ENTITY_COMMAND_BUTTON = "{device}_{command}"
-ENTITY_ADD_COMMAND_BUTTON = "{device}_add_command"
 
 # Device info
 MANUFACTURER = "IR Remote Integration"
@@ -89,5 +86,4 @@ MAX_NAME_LENGTH = 50
 ALLOWED_NAME_PATTERN = r"^[a-zA-Z0-9\s\-_а-яёА-ЯЁ]+$"
 
 # Translation keys
-TRANSLATION_KEY_ADD_COMMAND = "add_command"
 TRANSLATION_KEY_DEVICE_COMMAND = "device_command"
