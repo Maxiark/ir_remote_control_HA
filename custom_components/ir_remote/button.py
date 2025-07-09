@@ -181,3 +181,45 @@ class IRRemoteCommandButton(ButtonEntity):
         except Exception as e:
             _LOGGER.error("Failed to send IR code for %s - %s: %s", 
                          self._device_name, self._command_name, e)
+
+
+    async def _send_code_directly(self) -> None:
+        """Send IR code directly via ZHA."""
+        try:
+            # Get controller data from integration
+            entry_data = self.hass.data.get("ir_remote", {}).get(self._controller_id)
+            if not entry_data:
+                _LOGGER.error("Controller data not found for %s", self._controller_id)
+                return
+            
+            storage = entry_data["storage"]
+            controller = storage.get_controller(self._controller_id)
+            
+            if not controller:
+                _LOGGER.error("Controller not found in storage: %s", self._controller_id)
+                return
+            
+            # Send ZHA command directly (like in your script)
+            await self.hass.services.async_call(
+                "zha",
+                "issue_zigbee_cluster_command",
+                {
+                    "ieee": controller["ieee"],
+                    "endpoint_id": controller["endpoint_id"],
+                    "cluster_id": controller["cluster_id"],
+                    "cluster_type": "in",
+                    "command": 2,  # Command for sending (as in your script)
+                    "command_type": "server",
+                    "params": {
+                        "code": self._command_code
+                    }
+                },
+                blocking=True
+            )
+            _LOGGER.info("Successfully sent IR code directly via ZHA for %s - %s", 
+                        self._device_name, self._command_name)
+            
+        except Exception as e:
+            _LOGGER.error("Failed to send IR code directly: %s", e)
+
+
