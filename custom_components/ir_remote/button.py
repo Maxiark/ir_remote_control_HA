@@ -183,7 +183,7 @@ class IRRemoteCommandButton(ButtonEntity):
                          self._device_name, self._command_name, e)
 
 
-    async def _send_code_directly(self) -> None:
+    async def _send_code(self) -> None:
         """Send IR code directly via ZHA."""
         try:
             # Get controller data from integration
