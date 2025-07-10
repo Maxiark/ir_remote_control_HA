@@ -13,7 +13,6 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er, device_registry as dr
 
-
 from .const import (
     DOMAIN,
     CONF_IEEE,
@@ -114,11 +113,12 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self.flow_data: Dict[str, Any] = {}
         self.storage: IRRemoteStorage = None
-    
+
     async def async_step_user(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
-        """Handle the user step."""
+        """Handle user-initiated configuration."""
+        # Перенаправляем на наш основной шаг управления
         return await self.async_step_init(user_input)
- 
+    
     async def async_step_init(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step."""
         errors = {}
@@ -258,7 +258,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         
         return self.async_show_form(
-            step_id="select_controller",
+            step_id="select_controller_for_device",  # И ИСПРАВЛЯЕМ step_id на правильный
             data_schema=vol.Schema({
                 vol.Required(CONF_CONTROLLER_ID): vol.In(controller_options)
             })
@@ -295,10 +295,15 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         success = await self.storage.async_add_device(controller_id, device_id, device_name)
                         
                         if success:
-                            return self.async_create_entry(
-                                title=f"Устройство {device_name} добавлено",
-                                data={"action": "device_added"}
-                            )
+                            # Reload the config entry to create new entities
+                            config_entry = self.hass.config_entries.async_get_entry(controller_id)
+                            if config_entry:
+                                await self.hass.config_entries.async_reload(controller_id)
+                            
+                                return self.async_abort(
+                                    reason="device_added",
+                                    description_placeholders={"device_name": device_name}
+                                )
                         else:
                             errors["base"] = "add_device_failed"
                     except Exception:
@@ -430,9 +435,11 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             # User confirmed they're ready to learn
             # Complete the flow and let the integration handle learning
-            return self.async_create_entry(
-                title=f"Команда {self.flow_data[CONF_COMMAND_NAME]} добавлена для обучения",
-                data={"action": "command_learning_started"}
+            return self.async_abort(
+                reason="command_learning_started",
+                description_placeholders={
+                    "command_name": self.flow_data.get(CONF_COMMAND_NAME, "Unknown")
+                }
             )
         
         controller_name = "Unknown"
@@ -566,7 +573,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors={"base": ERROR_REMOVE_FAILED}
                 )
         
-        # Show confirmation dialog (rest remains the same)
+        # Show confirmation dialog
         controller_id = self.flow_data[CONF_CONTROLLER_ID]
         device_id = self.flow_data["device_id"]
         
@@ -589,7 +596,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "commands_count": str(commands_count)
             }
         )
-    
     
     async def async_step_select_controller_for_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Select controller for removing command."""
@@ -680,7 +686,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
     
-     async def async_step_confirm_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_confirm_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Confirm command removal."""
         if user_input is not None and user_input.get("confirm", False):
             # User confirmed removal
@@ -718,7 +724,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors={"base": ERROR_REMOVE_FAILED}
                 )
         
-        # Show confirmation dialog (rest remains the same)
+        # Show confirmation dialog
         controller_id = self.flow_data[CONF_CONTROLLER_ID]
         device_id = self.flow_data["device_id"]
         command_id = self.flow_data["command_id"]
@@ -773,14 +779,9 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "commands_count": str(total_commands)
             }
         )
+
+    # Helper methods for cleanup
     
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
-        """Get the options flow for this handler."""
-        return IRRemoteOptionsFlowHandler(config_entry)
-
-
     async def _cleanup_command_entity(self, controller_id: str, device_id: str, command_id: str) -> None:
         """Remove command button entity from Entity Registry."""
         entity_registry = er.async_get(self.hass)
@@ -827,6 +828,12 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if device_entry:
             device_registry.async_remove_device(device_entry.id)
             _LOGGER.debug("Removed virtual device: %s", device_entry.name)
+    
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
+        """Get the options flow for this handler."""
+        return IRRemoteOptionsFlowHandler(config_entry)
 
 
 class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):

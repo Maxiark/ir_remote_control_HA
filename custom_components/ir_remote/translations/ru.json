@@ -144,7 +144,9 @@
         "abort": {
             "single_instance_allowed": "Разрешена только одна копия интеграции",
             "device_removed": "✅ Устройство '{device_name}' успешно удалено",
-            "command_removed": "✅ Команда '{command_name}' успешно удалена"
+            "command_removed": "✅ Команда '{command_name}' успешно удалена",
+            "device_added": "✅ Устройство '{device_name}' успешно добавлено",
+            "command_learning_started": "✅ Обучение команде '{command_name}' начато"
         }
     },
     "entity": {

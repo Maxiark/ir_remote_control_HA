@@ -120,13 +120,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error("ZHA integration not found")
         raise ConfigEntryNotReady("ZHA integration not available")
     
-    # Skip setup for temporary config flow entries (only device_added and command_learning_started)
-    action = entry.data.get("action")
-    if action in ["device_added", "command_learning_started"]:
-        # This is a temporary entry from config flow, remove it
-        await hass.config_entries.async_remove(entry.entry_id)
-        return True
-    
     # Initialize storage for this controller
     storage = IRRemoteStorage(hass)
     await storage.async_load()
