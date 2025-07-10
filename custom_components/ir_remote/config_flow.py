@@ -113,6 +113,10 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.flow_data: Dict[str, Any] = {}
         self.storage: IRRemoteStorage = None
     
+    async def async_step_user(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Handle the user step."""
+        return await self.async_step_init(user_input)
+ 
     async def async_step_init(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step."""
         errors = {}
@@ -532,14 +536,22 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             controller_id = self.flow_data[CONF_CONTROLLER_ID]
             device_id = self.flow_data["device_id"]
             
+            # Get device name before removal for display
+            device = self.storage.get_device(controller_id, device_id)
+            device_name = device["name"] if device else "Unknown"
+            
             try:
                 success = await self.storage.async_remove_device(controller_id, device_id)
                 
                 if success:
-                    device = self.storage.get_device(controller_id, device_id) or {"name": "Unknown"}
-                    return self.async_create_entry(
-                        title=f"Устройство {device.get('name', 'Unknown')} удалено",
-                        data={"action": "device_removed"}
+                    # Reload the config entry to update entities
+                    config_entry = self.hass.config_entries.async_get_entry(controller_id)
+                    if config_entry:
+                        await self.hass.config_entries.async_reload(controller_id)
+                    
+                    return self.async_abort(
+                        reason="device_removed",
+                        description_placeholders={"device_name": device_name}
                     )
                 else:
                     return self.async_show_form(
@@ -575,6 +587,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "commands_count": str(commands_count)
             }
         )
+
+    
     
     async def async_step_select_controller_for_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Select controller for removing command."""
@@ -673,21 +687,26 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             device_id = self.flow_data["device_id"]
             command_id = self.flow_data["command_id"]
             
+            # Get command name before removal for display
+            commands = self.storage.get_commands(controller_id, device_id)
+            command_name = "Unknown"
+            for cmd in commands:
+                if cmd["id"] == command_id:
+                    command_name = cmd["name"]
+                    break
+            
             try:
                 success = await self.storage.async_remove_command(controller_id, device_id, command_id)
                 
                 if success:
-                    # Get command name before removal for display
-                    commands = self.storage.get_commands(controller_id, device_id)
-                    command_name = "Unknown"
-                    for cmd in commands:
-                        if cmd["id"] == command_id:
-                            command_name = cmd["name"]
-                            break
+                    # Reload the config entry to update entities
+                    config_entry = self.hass.config_entries.async_get_entry(controller_id)
+                    if config_entry:
+                        await self.hass.config_entries.async_reload(controller_id)
                     
-                    return self.async_create_entry(
-                        title=f"Команда {command_name} удалена",
-                        data={"action": "command_removed"}
+                    return self.async_abort(
+                        reason="command_removed",
+                        description_placeholders={"command_name": command_name}
                     )
                 else:
                     return self.async_show_form(

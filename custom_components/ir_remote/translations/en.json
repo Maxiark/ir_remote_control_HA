@@ -142,7 +142,9 @@
             "no_devices": "This controller has no devices. Add a device first."
         },
         "abort": {
-            "single_instance_allowed": "Only one instance of the integration is allowed"
+            "single_instance_allowed": "Only one instance of the integration is allowed",
+            "device_removed": "✅ Device '{device_name}' successfully removed",
+            "command_removed": "✅ Command '{command_name}' successfully removed"
         }
     },
     "entity": {

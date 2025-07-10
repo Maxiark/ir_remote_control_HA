@@ -142,7 +142,9 @@
             "no_devices": "У этого пульта нет устройств. Сначала добавьте устройство."
         },
         "abort": {
-            "single_instance_allowed": "Разрешена только одна копия интеграции"
+            "single_instance_allowed": "Разрешена только одна копия интеграции",
+            "device_removed": "✅ Устройство '{device_name}' успешно удалено",
+            "command_removed": "✅ Команда '{command_name}' успешно удалена"
         }
     },
     "entity": {
