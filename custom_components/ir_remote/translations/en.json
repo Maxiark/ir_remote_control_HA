@@ -70,10 +70,7 @@
             },
             "learn_command": {
                 "title": "Learn Command",
-                "description": "Now learning command \"{command_name}\" for device \"{device_name}\".\n\n1. Make sure IR controller \"{controller_name}\" is pointed at the target device\n2. Click \"Ready to Learn\"\n3. Immediately press the desired button on the original remote\n\nThe command will be automatically saved after receiving the IR signal.",
-                "data": {
-                    "ready": "Ready to Learn"
-                }
+                "description": "Now learning command \"{command_name}\" for device \"{device_name}\".\n\n1. Make sure IR controller \"{controller_name}\" is pointed at the target device\n2. Click \"Continue\"\n3. Immediately press the desired button on the original remote\n\nThe command will be automatically saved after receiving the IR signal."
             },
             "manage": {
                 "title": "Data Management",

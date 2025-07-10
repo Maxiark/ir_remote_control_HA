@@ -490,12 +490,36 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_learn_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle IR learning process."""
         if user_input is not None:
-            # User confirmed they're ready to learn
-            return self.async_show_form(
-                step_id="learning_started",
-                data_schema=vol.Schema({}),
+            # Пользователь нажал "продолжить" - сразу запускаем обучение
+            controller_id = self.flow_data[CONF_CONTROLLER_ID]
+            device_id = self.flow_data["device_id"]
+            command_id = self.flow_data["command_id"]
+            command_name = self.flow_data[CONF_COMMAND_NAME]
+            
+            try:
+                # Check if service exists, if not - start learning directly
+                if self.hass.services.has_service("ir_remote", "learn_command"):
+                    await self.hass.services.async_call(
+                        "ir_remote",
+                        "learn_command",
+                        {
+                            "controller_id": controller_id,
+                            "device": device_id,
+                            "command": command_id,
+                        },
+                        blocking=False
+                    )
+                else:
+                    # Start learning directly through the controller
+                    await self._start_learning_directly(controller_id, device_id, command_id, command_name)
+                    
+            except Exception as e:
+                _LOGGER.error("Failed to start learning: %s", e)
+            
+            return self.async_abort(
+                reason="command_learning_started",
                 description_placeholders={
-                    "command_name": self.flow_data.get(CONF_COMMAND_NAME, "Unknown")
+                    "command_name": command_name
                 }
             )
         
@@ -514,11 +538,10 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:
                 pass
         
+        # Показываем только инструкцию без полей формы - только кнопка "продолжить"
         return self.async_show_form(
             step_id=STEP_LEARN_COMMAND,
-            data_schema=vol.Schema({
-                vol.Required("ready"): bool,
-            }),
+            data_schema=vol.Schema({}),  # Пустая схема = только кнопка "продолжить"
             description_placeholders={
                 "controller_name": controller_name,
                 "device_name": device_name,
@@ -526,39 +549,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
     
-    async def async_step_learning_started(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
-        """Show learning started message and start the process."""
-        controller_id = self.flow_data[CONF_CONTROLLER_ID]
-        device_id = self.flow_data["device_id"]
-        command_id = self.flow_data["command_id"]
-        command_name = self.flow_data[CONF_COMMAND_NAME]
-        
-        try:
-            # Check if service exists, if not - start learning directly
-            if self.hass.services.has_service("ir_remote", "learn_command"):
-                await self.hass.services.async_call(
-                    "ir_remote",
-                    "learn_command",
-                    {
-                        "controller_id": controller_id,
-                        "device": device_id,
-                        "command": command_id,
-                    },
-                    blocking=False
-                )
-            else:
-                # Start learning directly through the controller
-                await self._start_learning_directly(controller_id, device_id, command_id, command_name)
-                
-        except Exception as e:
-            _LOGGER.error("Failed to start learning: %s", e)
-        
-        return self.async_abort(
-            reason="command_learning_started",
-            description_placeholders={
-                "command_name": command_name
-            }
-        )
     
     async def _start_learning_directly(self, controller_id: str, device_id: str, command_id: str, command_name: str) -> None:
         """Start learning directly without using service."""
