@@ -35,9 +35,7 @@ STEP_SELECT_CONTROLLER = "select_controller"
 STEP_ADD_CONTROLLER = "add_controller"
 STEP_ADD_DEVICE = "add_device"
 STEP_ADD_COMMAND = "add_command"
-STEP_SHOW_INSTRUCTION = "show_instruction"
-STEP_LEARNING_PROCESS = "learning_process"
-STEP_LEARNING_FAILED = "learning_failed"
+STEP_LEARN_COMMAND = "learn_command"
 STEP_MANAGE = "manage"
 
 # Error codes
@@ -48,7 +46,6 @@ ERROR_COMMAND_EXISTS = "command_exists"
 ERROR_INVALID_NAME = "invalid_name"
 ERROR_LEARN_TIMEOUT = "learn_timeout"
 ERROR_LEARN_FAILED = "learn_failed"
-ERROR_LEARNING_CANCELLED = "learning_cancelled"
 
 # Service names
 SERVICE_LEARN_COMMAND = "learn_command"
@@ -78,7 +75,6 @@ STORAGE_KEY = "ir_remote_data"
 
 # Entity naming patterns
 ENTITY_COMMAND_BUTTON = "{device}_{command}"
-ENTITY_ADD_COMMAND_BUTTON = "{device}_add_command"
 
 # Device info
 MANUFACTURER = "IR Remote Integration"
@@ -90,5 +86,4 @@ MAX_NAME_LENGTH = 50
 ALLOWED_NAME_PATTERN = r"^[a-zA-Z0-9\s\-_а-яёА-ЯЁ]+$"
 
 # Translation keys
-TRANSLATION_KEY_ADD_COMMAND = "add_command"
 TRANSLATION_KEY_DEVICE_COMMAND = "device_command"

@@ -68,19 +68,11 @@
                     "command_name": "For example: Power On, Power Off, Volume Up, Volume Down"
                 }
             },
-            "show_instruction": {
-                "title": "Learning Instructions",
-                "description": "Prepare to learn command \"{command_name}\" for device \"{device_name}\".\n\n📱 Take the original remote control\n🎯 Point IR controller \"{controller_name}\" at the target device\n⚡ After clicking \"Continue\" you have 10 seconds to press the button\n\nReady? Click \"Continue\" to start learning."
-            },
-            "learning_process": {
-                "title": "Learning in Progress",
-                "description": "🔄 Learning command \"{command_name}\"...\n\n🎯 NOW press the desired button on the original remote!\n📡 Point it at the IR controller \"{controller_name}\"\n\n⏱️ Waiting for signal... (up to 10 seconds)\n\nThis window will close automatically when learning is complete."
-            },
-            "learning_failed": {
-                "title": "Learning Failed",
-                "description": "❌ Failed to learn command \"{command_name}\".\n\nPossible reasons:\n• Button on remote was not pressed\n• Remote pointed incorrectly\n• Weak signal\n• Remote doesn't support this command\n\nWhat to do next?",
+            "learn_command": {
+                "title": "Learn Command",
+                "description": "Now learning command \"{command_name}\" for device \"{device_name}\".\n\n1. Make sure IR controller \"{controller_name}\" is pointed at the target device\n2. Click \"Ready to Learn\"\n3. Immediately press the desired button on the original remote\n\nThe command will be automatically saved after receiving the IR signal.",
                 "data": {
-                    "action": "Action"
+                    "ready": "Ready to Learn"
                 }
             },
             "manage": {
@@ -97,19 +89,14 @@
             "learn_timeout": "IR signal waiting timeout expired",
             "learn_failed": "Failed to receive IR signal",
             "add_device_failed": "Failed to add device",
-            "no_devices": "This controller has no devices. Add a device first.",
-            "learning_cancelled": "Learning cancelled by user"
+            "no_devices": "This controller has no devices. Add a device first."
         },
         "abort": {
-            "single_instance_allowed": "Only one instance of the integration is allowed",
-            "learning_cancelled": "Command learning cancelled"
+            "single_instance_allowed": "Only one instance of the integration is allowed"
         }
     },
     "entity": {
         "button": {
-            "add_command": {
-                "name": "Add Command"
-            },
             "device_command": {
                 "name": "{command_name}"
             }

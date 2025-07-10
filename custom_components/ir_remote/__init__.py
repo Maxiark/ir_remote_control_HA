@@ -142,7 +142,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady("ZHA integration not available")
     
     # Skip setup for temporary config flow entries
-    if entry.data.get("action") in ["device_added", "command_learned_successfully"]:
+    if entry.data.get("action") in ["device_added", "command_learning_started"]:
         # This is a temporary entry from config flow, remove it
         _LOGGER.debug("Removing temporary config flow entry: %s", entry.data.get("action"))
         await hass.config_entries.async_remove(entry.entry_id)
