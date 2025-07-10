@@ -103,31 +103,50 @@ async def async_setup(hass: HomeAssistant, config: Dict[str, Any]) -> bool:
     # Initialize domain data
     hass.data.setdefault(DOMAIN, {})
     
-    # Register services
-    try:
-        await _register_services(hass)
-        _LOGGER.info("IR Remote services registered successfully")
-    except Exception as e:
-        _LOGGER.error("Failed to register IR Remote services: %s", e)
-        return False
+    # НЕ регистрируем сервисы здесь - они будут регистрироваться в async_setup_entry
     
     _LOGGER.info("IR Remote integration setup completed")
     return True
+
+
+def _is_real_controller_entry(entry_data: Dict[str, Any]) -> bool:
+    """Check if config entry is a real controller (not temporary from config flow)."""
+    if not isinstance(entry_data, dict):
+        return False
+    
+    # Проверяем, что это не временная запись из config flow
+    config = entry_data.get("config", {})
+    if config.get("action") in ["device_added", "command_learning_started"]:
+        return False
+    
+    # Проверяем, что есть storage
+    return "storage" in entry_data
+
+
+def _count_active_controllers(hass: HomeAssistant) -> int:
+    """Count active controller entries (excluding temporary config flow entries)."""
+    count = 0
+    for entry_data in hass.data.get(DOMAIN, {}).values():
+        if _is_real_controller_entry(entry_data):
+            count += 1
+    return count
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up IR Remote from a config entry."""
     _LOGGER.info("Setting up IR Remote entry: %s", entry.title)
     
-    # Skip setup for entries without required data (should not happen with new flow)
-    if CONF_IEEE not in entry.data:
-        _LOGGER.warning("Skipping entry without IEEE data: %s", entry.title)
-        return True
-    
     # Check ZHA availability
     if "zha" not in hass.data:
         _LOGGER.error("ZHA integration not found")
         raise ConfigEntryNotReady("ZHA integration not available")
+    
+    # Skip setup for temporary config flow entries
+    if entry.data.get("action") in ["device_added", "command_learning_started"]:
+        # This is a temporary entry from config flow, remove it
+        _LOGGER.debug("Removing temporary config flow entry: %s", entry.data.get("action"))
+        await hass.config_entries.async_remove(entry.entry_id)
+        return True
     
     # Initialize storage for this controller
     storage = IRRemoteStorage(hass)
@@ -158,6 +177,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "config": entry.data,
     }
     
+    # Регистрируем сервисы только при добавлении первого реального контроллера
+    active_controllers_count = _count_active_controllers(hass)
+    _LOGGER.debug("Active controllers count: %d", active_controllers_count)
+    
+    if active_controllers_count == 1:
+        _LOGGER.info("Registering IR Remote services (first controller)")
+        await _register_services(hass)
+    else:
+        _LOGGER.debug("Services already registered, skipping registration")
+    
     # Register device
     await _register_ir_controller_device(hass, entry)
     
@@ -176,7 +205,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _register_services(hass: HomeAssistant) -> None:
     """Register services for IR Remote."""
-    _LOGGER.info("Starting service registration...")
+    _LOGGER.debug("Starting service registration")
     
     async def learn_command_service(call: ServiceCall) -> None:
         """Service to learn IR command."""
@@ -184,11 +213,11 @@ async def _register_services(hass: HomeAssistant) -> None:
         device_id = call.data[ATTR_DEVICE]
         command_id = call.data[ATTR_COMMAND]
         
-        _LOGGER.info("Learning command service called: %s - %s", device_id, command_id)
+        _LOGGER.info("Learning command: %s - %s", device_id, command_id)
         
         # Get storage and controller
         entry_data = hass.data[DOMAIN].get(controller_id)
-        if not entry_data:
+        if not entry_data or not _is_real_controller_entry(entry_data):
             _LOGGER.error("Controller %s not found", controller_id)
             return
         
@@ -198,9 +227,6 @@ async def _register_services(hass: HomeAssistant) -> None:
         if not controller:
             _LOGGER.error("Controller data not found: %s", controller_id)
             return
-        
-        # Don't create command placeholder - we'll create it after learning
-        _LOGGER.info("Starting learning process for %s - %s", device_id, command_id)
         
         try:
             # Send ZHA command to start learning
@@ -214,41 +240,15 @@ async def _register_services(hass: HomeAssistant) -> None:
                     "cluster_type": DEFAULT_CLUSTER_TYPE,
                     "command": ZHA_COMMAND_LEARN,
                     "command_type": DEFAULT_COMMAND_TYPE,
-                    "params": {"on_off": True}  # Required parameter for learning mode
+                    "params": {
+                        "controller_id": controller_id,
+                        "device_id": device_id,
+                        "command_id": command_id
+                    }
                 },
                 blocking=True
             )
             _LOGGER.info("Learning command sent for %s - %s", device_id, command_id)
-            
-            # Wait for learning to complete
-            await asyncio.sleep(10)
-            
-            # Read the learned IR code from attribute 0
-            try:
-                await hass.services.async_call(
-                    "zha_toolkit",
-                    "attr_read",
-                    {
-                        "ieee": controller["ieee"],
-                        "endpoint": controller["endpoint_id"],
-                        "cluster": controller["cluster_id"],
-                        "attribute": 0,
-                        "state_id": f"ir_remote.learned_code_{controller_id}",
-                        "allow_create": True,
-                        "use_cache": False
-                    },
-                    blocking=True
-                )
-                _LOGGER.info("Initiated IR code read for %s - %s", device_id, command_id)
-                
-                # Schedule code retrieval after a short delay
-                hass.async_create_task(
-                    _retrieve_learned_code(hass, controller_id, device_id, command_id, storage)
-                )
-                
-            except Exception as e:
-                _LOGGER.error("Failed to read IR code: %s", e)
-                
         except Exception as e:
             _LOGGER.error("Failed to send learning command: %s", e)
             raise HomeAssistantError(f"Failed to start learning: {e}") from e
@@ -262,7 +262,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         
         # Get controller config
         entry_data = hass.data[DOMAIN].get(controller_id)
-        if not entry_data:
+        if not entry_data or not _is_real_controller_entry(entry_data):
             _LOGGER.error("Controller %s not found", controller_id)
             return
         
@@ -304,7 +304,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         
         # Get storage
         entry_data = hass.data[DOMAIN].get(controller_id)
-        if not entry_data:
+        if not entry_data or not _is_real_controller_entry(entry_data):
             _LOGGER.error("Controller %s not found", controller_id)
             return
         
@@ -331,7 +331,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         
         # Get storage
         entry_data = hass.data[DOMAIN].get(controller_id)
-        if not entry_data:
+        if not entry_data or not _is_real_controller_entry(entry_data):
             _LOGGER.error("Controller %s not found", controller_id)
             return
         
@@ -361,7 +361,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         
         # Get storage
         entry_data = hass.data[DOMAIN].get(controller_id)
-        if not entry_data:
+        if not entry_data or not _is_real_controller_entry(entry_data):
             _LOGGER.error("Controller %s not found", controller_id)
             return
         
@@ -387,7 +387,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         if controller_id:
             # Get data for specific controller
             entry_data = hass.data[DOMAIN].get(controller_id)
-            if not entry_data:
+            if not entry_data or not _is_real_controller_entry(entry_data):
                 return {"error": "Controller not found"}
             
             storage = entry_data["storage"]
@@ -397,78 +397,37 @@ async def _register_services(hass: HomeAssistant) -> None:
             # Get data for all controllers
             all_data = {}
             for entry_id, entry_data in hass.data[DOMAIN].items():
-                if isinstance(entry_data, dict) and "storage" in entry_data:
+                if _is_real_controller_entry(entry_data):
                     storage = entry_data["storage"]
                     controllers = storage.get_controllers()
                     all_data[entry_id] = controllers
             return all_data
     
     # Register services
-    _LOGGER.info("Registering learn_command service...")
-    hass.services.async_register(
-        DOMAIN, SERVICE_LEARN_COMMAND, learn_command_service, schema=LEARN_COMMAND_SCHEMA
-    )
+    services_to_register = [
+        (SERVICE_LEARN_COMMAND, learn_command_service, LEARN_COMMAND_SCHEMA),
+        (SERVICE_SEND_CODE, send_code_service, SEND_CODE_SCHEMA),
+        (SERVICE_SEND_COMMAND, send_command_service, SEND_COMMAND_SCHEMA),
+        (SERVICE_ADD_DEVICE, add_device_service, ADD_DEVICE_SCHEMA),
+        (SERVICE_ADD_COMMAND, add_command_service, ADD_COMMAND_SCHEMA),
+        (SERVICE_GET_DATA, get_data_service, GET_DATA_SCHEMA),
+    ]
     
-    _LOGGER.info("Registering send_code service...")
-    hass.services.async_register(
-        DOMAIN, SERVICE_SEND_CODE, send_code_service, schema=SEND_CODE_SCHEMA
-    )
-    
-    _LOGGER.info("Registering send_command service...")
-    hass.services.async_register(
-        DOMAIN, SERVICE_SEND_COMMAND, send_command_service, schema=SEND_COMMAND_SCHEMA
-    )
-    
-    _LOGGER.info("Registering add_device service...")
-    hass.services.async_register(
-        DOMAIN, SERVICE_ADD_DEVICE, add_device_service, schema=ADD_DEVICE_SCHEMA
-    )
-    
-    _LOGGER.info("Registering add_command service...")
-    hass.services.async_register(
-        DOMAIN, SERVICE_ADD_COMMAND, add_command_service, schema=ADD_COMMAND_SCHEMA
-    )
-    
-    _LOGGER.info("Registering get_data service...")
-    hass.services.async_register(
-        DOMAIN, SERVICE_GET_DATA, get_data_service, schema=GET_DATA_SCHEMA, supports_response=True
-    )
-    
-    _LOGGER.info("All IR Remote services registered successfully")
-
-
-async def _retrieve_learned_code(hass: HomeAssistant, controller_id: str, device_id: str, command_id: str, storage: IRRemoteStorage) -> None:
-    """Retrieve learned IR code from state and save it."""
-    await asyncio.sleep(1)  # Wait for state to be updated
-    
-    try:
-        state_id = f"ir_remote.learned_code_{controller_id}"
-        state = hass.states.get(state_id)
+    for service_name, service_func, schema in services_to_register:
+        if hass.services.has_service(DOMAIN, service_name):
+            _LOGGER.debug("Service %s already exists, skipping", service_name)
+            continue
         
-        if state and state.state:
-            ir_code = state.state
-            _LOGGER.info("Retrieved learned IR code (length: %d) for %s - %s", len(ir_code), device_id, command_id)
-            
-            # Save the learned code
-            command_name = command_id.replace("_", " ").title()
-            success = await storage.async_add_command(
-                controller_id, device_id, command_id, command_name, ir_code
-            )
-            
-            if success:
-                _LOGGER.info("Successfully saved learned command: %s - %s", device_id, command_name)
-                # Reload config entry to update button entity
-                await hass.config_entries.async_reload(controller_id)
-                
-                # Clean up temporary state
-                hass.states.async_remove(state_id)
-            else:
-                _LOGGER.error("Failed to save learned command: %s - %s", device_id, command_name)
-        else:
-            _LOGGER.warning("No learned code found in state %s", state_id)
-            
-    except Exception as e:
-        _LOGGER.error("Error retrieving learned code: %s", e)
+        extra_kwargs = {}
+        if service_name == SERVICE_GET_DATA:
+            extra_kwargs["supports_response"] = True
+        
+        hass.services.async_register(
+            DOMAIN, service_name, service_func, schema=schema, **extra_kwargs
+        )
+        _LOGGER.debug("Registered service: %s", service_name)
+    
+    _LOGGER.info("IR Remote services registration completed")
 
 
 async def _setup_zha_event_handler(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -481,18 +440,38 @@ async def _setup_zha_event_handler(hass: HomeAssistant, entry: ConfigEntry) -> N
         cluster_id = event.data.get("cluster_id")
         args = event.data.get("args", {})
         
-        _LOGGER.debug("ZHA event received: ieee=%s, endpoint=%s, cluster=%s, args=%s", 
-                     device_ieee, endpoint_id, cluster_id, args)
-        
         # Check if this event is from our controller
         if (device_ieee == entry.data[CONF_IEEE] and
             endpoint_id == entry.data.get(CONF_ENDPOINT, 1) and
             cluster_id == entry.data.get(CONF_CLUSTER, 57348)):
             
-            _LOGGER.info("Received ZHA event from IR controller: %s", args)
+            _LOGGER.info("Received ZHA event from IR controller")
             
-            # We now use attr_read instead of ZHA events for getting IR codes
-            # This handler is kept for potential future use or debugging
+            # Check if this is a learned IR code
+            if "code" in args:
+                controller_id = args.get("controller_id", entry.entry_id)
+                device_id = args.get("device_id")
+                command_id = args.get("command_id")
+                command_name = args.get("command_name", command_id)
+                ir_code = args["code"]
+                
+                _LOGGER.info("Learned IR code: %s - %s (length: %d)", 
+                           device_id, command_name, len(ir_code))
+                
+                # Save the learned code
+                entry_data = hass.data[DOMAIN].get(controller_id)
+                if entry_data and _is_real_controller_entry(entry_data):
+                    storage = entry_data["storage"]
+                    success = await storage.async_add_command(
+                        controller_id, device_id, command_id, command_name, ir_code
+                    )
+                    
+                    if success:
+                        _LOGGER.info("Successfully saved learned command")
+                        # Reload config entry to create button entity
+                        await hass.config_entries.async_reload(controller_id)
+                    else:
+                        _LOGGER.error("Failed to save learned command")
     
     # Register event listener
     remove_listener = hass.bus.async_listen("zha_event", handle_zha_event)
@@ -511,7 +490,7 @@ async def _register_ir_controller_device(hass: HomeAssistant, entry: ConfigEntry
         name=entry.title,
         manufacturer=MANUFACTURER,
         model=MODEL_CONTROLLER,
-        sw_version="2.0.0",
+        sw_version="2.0.1",
     )
     
     _LOGGER.debug("Registered IR controller device: %s", entry.title)
@@ -554,20 +533,32 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry_data = hass.data[DOMAIN].get(entry.entry_id)
         if entry_data and "zha_listener" in entry_data:
             entry_data["zha_listener"]()
+            _LOGGER.debug("Removed ZHA event listener for %s", entry.entry_id)
         
         # Remove entry data
         hass.data[DOMAIN].pop(entry.entry_id, None)
         
-        # Remove services if no more entries
-        if not hass.data[DOMAIN]:
+        # Подсчитываем оставшиеся активные контроллеры
+        active_controllers_count = _count_active_controllers(hass)
+        _LOGGER.debug("Active controllers count after removal: %d", active_controllers_count)
+        
+        # Remove services if no more active controllers
+        if active_controllers_count == 0:
+            _LOGGER.info("Removing IR Remote services (no active controllers)")
             services = [
                 SERVICE_LEARN_COMMAND, SERVICE_SEND_CODE, SERVICE_SEND_COMMAND,
                 SERVICE_ADD_DEVICE, SERVICE_ADD_COMMAND, SERVICE_GET_DATA
             ]
             for service in services:
-                hass.services.async_remove(DOMAIN, service)
+                if hass.services.has_service(DOMAIN, service):
+                    hass.services.async_remove(DOMAIN, service)
+                    _LOGGER.debug("Removed service: %s", service)
+                else:
+                    _LOGGER.debug("Service %s was not registered", service)
             
-            _LOGGER.info("Removed IR Remote services")
+            _LOGGER.info("All IR Remote services removed")
+        else:
+            _LOGGER.debug("Services kept (still have %d active controllers)", active_controllers_count)
     
     _LOGGER.info("IR Remote entry unloaded: %s", unload_ok)
     return unload_ok
