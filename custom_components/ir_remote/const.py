@@ -27,6 +27,8 @@ CONF_COMMAND_NAME = "command_name"
 ACTION_ADD_CONTROLLER = "add_controller"
 ACTION_ADD_DEVICE = "add_device"
 ACTION_ADD_COMMAND = "add_command"
+ACTION_REMOVE_DEVICE = "remove_device"
+ACTION_REMOVE_COMMAND = "remove_command"
 ACTION_MANAGE = "manage"
 
 # Config Flow steps
@@ -36,6 +38,13 @@ STEP_ADD_CONTROLLER = "add_controller"
 STEP_ADD_DEVICE = "add_device"
 STEP_ADD_COMMAND = "add_command"
 STEP_LEARN_COMMAND = "learn_command"
+STEP_SELECT_CONTROLLER_FOR_REMOVE_DEVICE = "select_controller_for_remove_device"
+STEP_SELECT_DEVICE_FOR_REMOVE = "select_device_for_remove"
+STEP_CONFIRM_REMOVE_DEVICE = "confirm_remove_device"
+STEP_SELECT_CONTROLLER_FOR_REMOVE_COMMAND = "select_controller_for_remove_command"
+STEP_SELECT_DEVICE_FOR_REMOVE_COMMAND = "select_device_for_remove_command"
+STEP_SELECT_COMMAND_FOR_REMOVE = "select_command_for_remove"
+STEP_CONFIRM_REMOVE_COMMAND = "confirm_remove_command"
 STEP_MANAGE = "manage"
 
 # Error codes
@@ -46,6 +55,7 @@ ERROR_COMMAND_EXISTS = "command_exists"
 ERROR_INVALID_NAME = "invalid_name"
 ERROR_LEARN_TIMEOUT = "learn_timeout"
 ERROR_LEARN_FAILED = "learn_failed"
+ERROR_REMOVE_FAILED = "remove_failed"
 
 # Service names
 SERVICE_LEARN_COMMAND = "learn_command"
@@ -75,6 +85,7 @@ STORAGE_KEY = "ir_remote_data"
 
 # Entity naming patterns
 ENTITY_COMMAND_BUTTON = "{device}_{command}"
+ENTITY_ADD_COMMAND_BUTTON = "{device}_add_command"
 
 # Device info
 MANUFACTURER = "IR Remote Integration"
@@ -86,4 +97,5 @@ MAX_NAME_LENGTH = 50
 ALLOWED_NAME_PATTERN = r"^[a-zA-Z0-9\s\-_а-яёА-ЯЁ]+$"
 
 # Translation keys
+TRANSLATION_KEY_ADD_COMMAND = "add_command"
 TRANSLATION_KEY_DEVICE_COMMAND = "device_command"

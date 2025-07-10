@@ -1,7 +1,6 @@
 """Config flow for IR Remote integration."""
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Dict
 
@@ -26,18 +25,28 @@ from .const import (
     ACTION_ADD_CONTROLLER,
     ACTION_ADD_DEVICE,
     ACTION_ADD_COMMAND,
+    ACTION_REMOVE_DEVICE,
+    ACTION_REMOVE_COMMAND,
     ACTION_MANAGE,
     STEP_INIT,
     STEP_ADD_CONTROLLER,
     STEP_ADD_DEVICE,
     STEP_ADD_COMMAND,
     STEP_LEARN_COMMAND,
+    STEP_SELECT_CONTROLLER_FOR_REMOVE_DEVICE,
+    STEP_SELECT_DEVICE_FOR_REMOVE,
+    STEP_CONFIRM_REMOVE_DEVICE,
+    STEP_SELECT_CONTROLLER_FOR_REMOVE_COMMAND,
+    STEP_SELECT_DEVICE_FOR_REMOVE_COMMAND,
+    STEP_SELECT_COMMAND_FOR_REMOVE,
+    STEP_CONFIRM_REMOVE_COMMAND,
     STEP_MANAGE,
     ERROR_NO_ZHA,
     ERROR_NO_DEVICE,
     ERROR_DEVICE_EXISTS,
     ERROR_COMMAND_EXISTS,
     ERROR_INVALID_NAME,
+    ERROR_REMOVE_FAILED,
     DEFAULT_ENDPOINT_ID,
     DEFAULT_CLUSTER_ID,
 )
@@ -104,10 +113,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.flow_data: Dict[str, Any] = {}
         self.storage: IRRemoteStorage = None
     
-    async def async_step_user(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
-        """Handle the user step."""
-        return await self.async_step_init(user_input)
-    
     async def async_step_init(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial step."""
         errors = {}
@@ -121,11 +126,29 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_select_controller_for_device()
             elif action == ACTION_ADD_COMMAND:
                 return await self.async_step_select_controller_for_command()
+            elif action == ACTION_REMOVE_DEVICE:
+                return await self.async_step_select_controller_for_remove_device()
+            elif action == ACTION_REMOVE_COMMAND:
+                return await self.async_step_select_controller_for_remove_command()
             elif action == ACTION_MANAGE:
                 return await self.async_step_manage()
         
-        # Initialize storage and clean up orphaned data
-        controllers = await self._get_valid_controllers()
+        # Initialize storage for checking existing controllers
+        if self.storage is None:
+            self.storage = IRRemoteStorage(self.hass)
+            try:
+                await self.storage.async_load()
+            except Exception as e:
+                _LOGGER.debug("Could not load storage in config flow: %s", e)
+                # Continue with empty storage
+        
+        # Get existing controllers for display
+        controllers = []
+        if self.storage:
+            try:
+                controllers = self.storage.get_controllers()
+            except Exception as e:
+                _LOGGER.debug("Could not get controllers: %s", e)
         
         # Determine available actions
         actions = {ACTION_ADD_CONTROLLER: "Добавить новый ИК-пульт"}
@@ -133,7 +156,9 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if controllers:
             actions.update({
                 ACTION_ADD_DEVICE: "Добавить виртуальное устройство",
-                ACTION_ADD_COMMAND: "Добавить команду к устройству", 
+                ACTION_ADD_COMMAND: "Добавить команду к устройству",
+                ACTION_REMOVE_DEVICE: "Удалить виртуальное устройство",
+                ACTION_REMOVE_COMMAND: "Удалить команду устройства",
                 ACTION_MANAGE: "Управление существующими данными"
             })
         
@@ -147,37 +172,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "controllers_count": str(len(controllers))
             }
         )
-    
-    async def _get_valid_controllers(self):
-        """Get valid controllers and clean up orphaned ones."""
-        # Initialize storage for checking existing controllers
-        if self.storage is None:
-            self.storage = IRRemoteStorage(self.hass)
-            try:
-                await self.storage.async_load()
-            except Exception as e:
-                _LOGGER.debug("Could not load storage in config flow: %s", e)
-                return []
-        
-        controllers = []
-        try:
-            all_controllers = self.storage.get_controllers()
-            # Filter out controllers that don't have corresponding config entries
-            existing_entries = {entry.entry_id for entry in self.hass.config_entries.async_entries(DOMAIN)}
-            controllers = [c for c in all_controllers if c["id"] in existing_entries]
-            
-            # Clean up orphaned controllers
-            orphaned_controllers = [c for c in all_controllers if c["id"] not in existing_entries]
-            if orphaned_controllers:
-                _LOGGER.info("Found %d orphaned controllers, cleaning up...", len(orphaned_controllers))
-                for orphaned in orphaned_controllers:
-                    await self.storage.async_remove_controller(orphaned["id"])
-                    _LOGGER.info("Removed orphaned controller: %s", orphaned["name"])
-                
-        except Exception as e:
-            _LOGGER.debug("Could not get controllers: %s", e)
-        
-        return controllers
     
     async def async_step_add_controller(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle adding new IR controller."""
@@ -193,13 +187,10 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not self.storage._validate_name(room_name):
                 errors[CONF_ROOM_NAME] = ERROR_INVALID_NAME
             else:
-                # Check if controller with this IEEE already exists AND has config entry
+                # Check if controller with this IEEE already exists
                 controllers = self.storage.get_controllers()
-                existing_entries = {entry.entry_id for entry in self.hass.config_entries.async_entries(DOMAIN)}
-                
                 for controller in controllers:
-                    if (controller["ieee"] == ieee and 
-                        controller["id"] in existing_entries):
+                    if controller["ieee"] == ieee:
                         errors[CONF_IEEE] = ERROR_DEVICE_EXISTS
                         break
                 
@@ -235,8 +226,19 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     
     async def async_step_select_controller_for_device(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Select controller for adding device."""
-        controllers = await self._get_valid_controllers()
+        if self.storage is None:
+            self.storage = IRRemoteStorage(self.hass)
+            try:
+                await self.storage.async_load()
+            except Exception:
+                return self.async_abort(reason=ERROR_NO_DEVICE)
         
+        controllers = []
+        try:
+            controllers = self.storage.get_controllers()
+        except Exception:
+            pass
+            
         if not controllers:
             return self.async_abort(reason=ERROR_NO_DEVICE)
         
@@ -250,7 +252,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         }
         
         return self.async_show_form(
-            step_id="select_controller_for_device",
+            step_id="select_controller",
             data_schema=vol.Schema({
                 vol.Required(CONF_CONTROLLER_ID): vol.In(controller_options)
             })
@@ -287,16 +289,9 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         success = await self.storage.async_add_device(controller_id, device_id, device_name)
                         
                         if success:
-                            # Schedule reload after current flow completes
-                            self.hass.async_create_task(
-                                self._reload_entry_after_delay(controller_id)
-                            )
-                            
-                            return self.async_abort(
-                                reason="device_added_success",
-                                description_placeholders={
-                                    "device_name": device_name
-                                }
+                            return self.async_create_entry(
+                                title=f"Устройство {device_name} добавлено",
+                                data={"action": "device_added"}
                             )
                         else:
                             errors["base"] = "add_device_failed"
@@ -323,72 +318,9 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
     
-    async def _read_learned_code_after_delay(self, controller: dict, controller_id: str, device_id: str, command_id: str, command_name: str) -> None:
-        """Read learned IR code after delay."""
-        await asyncio.sleep(10)  # Wait for learning to complete
-        
-        try:
-            # Read the learned IR code from attribute 0
-            await self.hass.services.async_call(
-                "zha_toolkit",
-                "attr_read",
-                {
-                    "ieee": controller["ieee"],
-                    "endpoint": controller["endpoint_id"],
-                    "cluster": controller["cluster_id"],
-                    "attribute": 0,
-                    "state_id": f"ir_remote.learned_code_{controller_id}",
-                    "allow_create": True,
-                    "use_cache": False
-                },
-                blocking=True
-            )
-            
-            # Wait for state to be updated
-            await asyncio.sleep(1)
-            
-            # Retrieve and save the code
-            state_id = f"ir_remote.learned_code_{controller_id}"
-            state = self.hass.states.get(state_id)
-            
-            if state and state.state:
-                ir_code = state.state
-                _LOGGER.info("Retrieved learned IR code (length: %d) for %s - %s", len(ir_code), device_id, command_name)
-                
-                # Save the learned code
-                success = await self.storage.async_add_command(
-                    controller_id, device_id, command_id, command_name, ir_code
-                )
-                
-                if success:
-                    _LOGGER.info("Successfully saved learned command: %s - %s", device_id, command_name)
-                    # Reload config entry to update button entity
-                    await self.hass.config_entries.async_reload(controller_id)
-                    
-                    # Clean up temporary state
-                    self.hass.states.async_remove(state_id)
-                else:
-                    _LOGGER.error("Failed to save learned command: %s - %s", device_id, command_name)
-            else:
-                _LOGGER.warning("No learned code found in state %s", state_id)
-                
-        except Exception as e:
-            _LOGGER.error("Error reading learned code: %s", e)
-    
-    async def _reload_entry_after_delay(self, controller_id: str) -> None:
-        """Reload entry after a short delay."""
-        import asyncio
-        await asyncio.sleep(0.5)  # Short delay to let config flow complete
-        
-        for entry in self.hass.config_entries.async_entries(DOMAIN):
-            if entry.entry_id == controller_id:
-                await self.hass.config_entries.async_reload(entry.entry_id)
-                break
-    
     async def async_step_select_controller_for_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Select controller and device for adding command."""
-        controllers = await self._get_valid_controllers()
-        
+        controllers = self.storage.get_controllers()
         if not controllers:
             return self.async_abort(reason=ERROR_NO_DEVICE)
         
@@ -490,37 +422,11 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_learn_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle IR learning process."""
         if user_input is not None:
-            # Пользователь нажал "продолжить" - сразу запускаем обучение
-            controller_id = self.flow_data[CONF_CONTROLLER_ID]
-            device_id = self.flow_data["device_id"]
-            command_id = self.flow_data["command_id"]
-            command_name = self.flow_data[CONF_COMMAND_NAME]
-            
-            try:
-                # Check if service exists, if not - start learning directly
-                if self.hass.services.has_service("ir_remote", "learn_command"):
-                    await self.hass.services.async_call(
-                        "ir_remote",
-                        "learn_command",
-                        {
-                            "controller_id": controller_id,
-                            "device": device_id,
-                            "command": command_id,
-                        },
-                        blocking=False
-                    )
-                else:
-                    # Start learning directly through the controller
-                    await self._start_learning_directly(controller_id, device_id, command_id, command_name)
-                    
-            except Exception as e:
-                _LOGGER.error("Failed to start learning: %s", e)
-            
-            return self.async_abort(
-                reason="command_learning_started",
-                description_placeholders={
-                    "command_name": command_name
-                }
+            # User confirmed they're ready to learn
+            # Complete the flow and let the integration handle learning
+            return self.async_create_entry(
+                title=f"Команда {self.flow_data[CONF_COMMAND_NAME]} добавлена для обучения",
+                data={"action": "command_learning_started"}
             )
         
         controller_name = "Unknown"
@@ -538,10 +444,11 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except Exception:
                 pass
         
-        # Показываем только инструкцию без полей формы - только кнопка "продолжить"
         return self.async_show_form(
             step_id=STEP_LEARN_COMMAND,
-            data_schema=vol.Schema({}),  # Пустая схема = только кнопка "продолжить"
+            data_schema=vol.Schema({
+                vol.Required("ready"): bool,
+            }),
             description_placeholders={
                 "controller_name": controller_name,
                 "device_name": device_name,
@@ -549,47 +456,284 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
     
+    # NEW METHODS FOR REMOVAL
     
-    async def _start_learning_directly(self, controller_id: str, device_id: str, command_id: str, command_name: str) -> None:
-        """Start learning directly without using service."""
+    async def async_step_select_controller_for_remove_device(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Select controller for removing device."""
+        if self.storage is None:
+            self.storage = IRRemoteStorage(self.hass)
+            try:
+                await self.storage.async_load()
+            except Exception:
+                return self.async_abort(reason=ERROR_NO_DEVICE)
+        
+        controllers = []
         try:
-            # Don't create command placeholder - we'll create it after learning
-            _LOGGER.info("Starting learning process for %s - %s", device_id, command_name)
+            controllers = self.storage.get_controllers()
+        except Exception:
+            pass
             
-            # Get controller data from storage
-            controller = self.storage.get_controller(controller_id)
-            if not controller:
-                _LOGGER.error("Controller not found: %s", controller_id)
-                return
+        if not controllers:
+            return self.async_abort(reason=ERROR_NO_DEVICE)
+        
+        if user_input is not None:
+            self.flow_data[CONF_CONTROLLER_ID] = user_input[CONF_CONTROLLER_ID]
+            return await self.async_step_select_device_for_remove()
+        
+        controller_options = {
+            controller["id"]: f"{controller['name']} ({controller['device_count']} устройств)" 
+            for controller in controllers if controller["device_count"] > 0
+        }
+        
+        if not controller_options:
+            return self.async_abort(reason="no_devices")
+        
+        return self.async_show_form(
+            step_id=STEP_SELECT_CONTROLLER_FOR_REMOVE_DEVICE,
+            data_schema=vol.Schema({
+                vol.Required(CONF_CONTROLLER_ID): vol.In(controller_options)
+            })
+        )
+    
+    async def async_step_select_device_for_remove(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Select device for removal."""
+        if user_input is not None:
+            self.flow_data["device_id"] = user_input["device_id"]
+            return await self.async_step_confirm_remove_device()
+        
+        controller_id = self.flow_data[CONF_CONTROLLER_ID]
+        devices = self.storage.get_devices(controller_id)
+        
+        if not devices:
+            return self.async_abort(reason="no_devices")
+        
+        controller = self.storage.get_controller(controller_id)
+        controller_name = controller["name"] if controller else "Unknown"
+        
+        device_options = {
+            device["id"]: f"{device['name']} ({device['command_count']} команд)"
+            for device in devices
+        }
+        
+        return self.async_show_form(
+            step_id=STEP_SELECT_DEVICE_FOR_REMOVE,
+            data_schema=vol.Schema({
+                vol.Required("device_id"): vol.In(device_options)
+            }),
+            description_placeholders={
+                "controller_name": controller_name
+            }
+        )
+    
+    async def async_step_confirm_remove_device(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Confirm device removal."""
+        if user_input is not None and user_input.get("confirm", False):
+            # User confirmed removal
+            controller_id = self.flow_data[CONF_CONTROLLER_ID]
+            device_id = self.flow_data["device_id"]
             
-            # Send ZHA command directly
-            await self.hass.services.async_call(
-                "zha",
-                "issue_zigbee_cluster_command",
-                {
-                    "ieee": controller["ieee"],
-                    "endpoint_id": controller["endpoint_id"],
-                    "cluster_id": controller["cluster_id"],
-                    "cluster_type": "in",
-                    "command": 1,  # ZHA_COMMAND_LEARN
-                    "command_type": "server",
-                    "params": {"on_off": True}  # Required parameter for learning mode
-                },
-                blocking=True
-            )
-            _LOGGER.info("Learning command sent directly for %s - %s", device_id, command_name)
+            try:
+                success = await self.storage.async_remove_device(controller_id, device_id)
+                
+                if success:
+                    device = self.storage.get_device(controller_id, device_id) or {"name": "Unknown"}
+                    return self.async_create_entry(
+                        title=f"Устройство {device.get('name', 'Unknown')} удалено",
+                        data={"action": "device_removed"}
+                    )
+                else:
+                    return self.async_show_form(
+                        step_id=STEP_CONFIRM_REMOVE_DEVICE,
+                        errors={"base": ERROR_REMOVE_FAILED}
+                    )
+            except Exception:
+                return self.async_show_form(
+                    step_id=STEP_CONFIRM_REMOVE_DEVICE,
+                    errors={"base": ERROR_REMOVE_FAILED}
+                )
+        
+        # Show confirmation dialog
+        controller_id = self.flow_data[CONF_CONTROLLER_ID]
+        device_id = self.flow_data["device_id"]
+        
+        controller = self.storage.get_controller(controller_id)
+        device = self.storage.get_device(controller_id, device_id)
+        commands = self.storage.get_commands(controller_id, device_id)
+        
+        controller_name = controller["name"] if controller else "Unknown"
+        device_name = device["name"] if device else "Unknown"
+        commands_count = len(commands)
+        
+        return self.async_show_form(
+            step_id=STEP_CONFIRM_REMOVE_DEVICE,
+            data_schema=vol.Schema({
+                vol.Required("confirm", default=False): bool,
+            }),
+            description_placeholders={
+                "controller_name": controller_name,
+                "device_name": device_name,
+                "commands_count": str(commands_count)
+            }
+        )
+    
+    async def async_step_select_controller_for_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Select controller for removing command."""
+        controllers = self.storage.get_controllers()
+        if not controllers:
+            return self.async_abort(reason=ERROR_NO_DEVICE)
+        
+        if user_input is not None:
+            controller_id = user_input[CONF_CONTROLLER_ID]
+            self.flow_data[CONF_CONTROLLER_ID] = controller_id
+            return await self.async_step_select_device_for_remove_command()
+        
+        # Only show controllers that have devices with commands
+        controller_options = {}
+        for controller in controllers:
+            devices = self.storage.get_devices(controller["id"])
+            total_commands = sum(device["command_count"] for device in devices)
+            if total_commands > 0:
+                controller_options[controller["id"]] = f"{controller['name']} ({total_commands} команд)"
+        
+        if not controller_options:
+            return self.async_abort(reason="no_devices")
+        
+        return self.async_show_form(
+            step_id=STEP_SELECT_CONTROLLER_FOR_REMOVE_COMMAND,
+            data_schema=vol.Schema({
+                vol.Required(CONF_CONTROLLER_ID): vol.In(controller_options)
+            })
+        )
+    
+    async def async_step_select_device_for_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Select device for removing command."""
+        if user_input is not None:
+            self.flow_data["device_id"] = user_input["device_id"]
+            return await self.async_step_select_command_for_remove()
+        
+        controller_id = self.flow_data[CONF_CONTROLLER_ID]
+        devices = self.storage.get_devices(controller_id)
+        controller = self.storage.get_controller(controller_id)
+        controller_name = controller["name"] if controller else "Unknown"
+        
+        # Only show devices that have commands
+        device_options = {
+            device["id"]: f"{device['name']} ({device['command_count']} команд)"
+            for device in devices if device["command_count"] > 0
+        }
+        
+        if not device_options:
+            return self.async_abort(reason="no_devices")
+        
+        return self.async_show_form(
+            step_id=STEP_SELECT_DEVICE_FOR_REMOVE_COMMAND,
+            data_schema=vol.Schema({
+                vol.Required("device_id"): vol.In(device_options)
+            }),
+            description_placeholders={
+                "controller_name": controller_name
+            }
+        )
+    
+    async def async_step_select_command_for_remove(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Select command for removal."""
+        if user_input is not None:
+            self.flow_data["command_id"] = user_input["command_id"]
+            return await self.async_step_confirm_remove_command()
+        
+        controller_id = self.flow_data[CONF_CONTROLLER_ID]
+        device_id = self.flow_data["device_id"]
+        commands = self.storage.get_commands(controller_id, device_id)
+        device = self.storage.get_device(controller_id, device_id)
+        device_name = device["name"] if device else "Unknown"
+        
+        if not commands:
+            return self.async_abort(reason="no_devices")
+        
+        command_options = {
+            command["id"]: command["name"]
+            for command in commands
+        }
+        
+        return self.async_show_form(
+            step_id=STEP_SELECT_COMMAND_FOR_REMOVE,
+            data_schema=vol.Schema({
+                vol.Required("command_id"): vol.In(command_options)
+            }),
+            description_placeholders={
+                "device_name": device_name
+            }
+        )
+    
+    async def async_step_confirm_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Confirm command removal."""
+        if user_input is not None and user_input.get("confirm", False):
+            # User confirmed removal
+            controller_id = self.flow_data[CONF_CONTROLLER_ID]
+            device_id = self.flow_data["device_id"]
+            command_id = self.flow_data["command_id"]
             
-            # Schedule code reading after delay
-            self.hass.async_create_task(
-                self._read_learned_code_after_delay(controller, controller_id, device_id, command_id, command_name)
-            )
-            
-        except Exception as e:
-            _LOGGER.error("Failed to start learning directly: %s", e)
+            try:
+                success = await self.storage.async_remove_command(controller_id, device_id, command_id)
+                
+                if success:
+                    # Get command name before removal for display
+                    commands = self.storage.get_commands(controller_id, device_id)
+                    command_name = "Unknown"
+                    for cmd in commands:
+                        if cmd["id"] == command_id:
+                            command_name = cmd["name"]
+                            break
+                    
+                    return self.async_create_entry(
+                        title=f"Команда {command_name} удалена",
+                        data={"action": "command_removed"}
+                    )
+                else:
+                    return self.async_show_form(
+                        step_id=STEP_CONFIRM_REMOVE_COMMAND,
+                        errors={"base": ERROR_REMOVE_FAILED}
+                    )
+            except Exception:
+                return self.async_show_form(
+                    step_id=STEP_CONFIRM_REMOVE_COMMAND,
+                    errors={"base": ERROR_REMOVE_FAILED}
+                )
+        
+        # Show confirmation dialog
+        controller_id = self.flow_data[CONF_CONTROLLER_ID]
+        device_id = self.flow_data["device_id"]
+        command_id = self.flow_data["command_id"]
+        
+        controller = self.storage.get_controller(controller_id)
+        device = self.storage.get_device(controller_id, device_id)
+        commands = self.storage.get_commands(controller_id, device_id)
+        
+        controller_name = controller["name"] if controller else "Unknown"
+        device_name = device["name"] if device else "Unknown"
+        command_name = "Unknown"
+        
+        for cmd in commands:
+            if cmd["id"] == command_id:
+                command_name = cmd["name"]
+                break
+        
+        return self.async_show_form(
+            step_id=STEP_CONFIRM_REMOVE_COMMAND,
+            data_schema=vol.Schema({
+                vol.Required("confirm", default=False): bool,
+            }),
+            description_placeholders={
+                "controller_name": controller_name,
+                "device_name": device_name,
+                "command_name": command_name
+            }
+        )
     
     async def async_step_manage(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle management of existing data."""
-        controllers = await self._get_valid_controllers()
+        # This could show statistics and options for bulk operations
+        controllers = self.storage.get_controllers()
         
         total_devices = sum(controller["device_count"] for controller in controllers)
         total_commands = 0
@@ -602,8 +746,9 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 commands = self.storage.get_commands(controller_id, device_id)
                 total_commands += len(commands)
         
-        return self.async_abort(
-            reason="manage_completed",
+        return self.async_create_entry(
+            title="Данные просмотрены",
+            data={},
             description_placeholders={
                 "controllers_count": str(len(controllers)),
                 "devices_count": str(total_devices),

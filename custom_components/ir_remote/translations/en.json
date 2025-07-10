@@ -70,7 +70,59 @@
             },
             "learn_command": {
                 "title": "Learn Command",
-                "description": "Now learning command \"{command_name}\" for device \"{device_name}\".\n\n1. Make sure IR controller \"{controller_name}\" is pointed at the target device\n2. Click \"Continue\"\n3. Immediately press the desired button on the original remote\n\nThe command will be automatically saved after receiving the IR signal."
+                "description": "Now learning command \"{command_name}\" for device \"{device_name}\".\n\n1. Make sure IR controller \"{controller_name}\" is pointed at the target device\n2. Click \"Ready to Learn\"\n3. Immediately press the desired button on the original remote\n\nThe command will be automatically saved after receiving the IR signal.",
+                "data": {
+                    "ready": "Ready to Learn"
+                }
+            },
+            "select_controller_for_remove_device": {
+                "title": "Select IR Controller",
+                "description": "Choose IR controller to remove device from.",
+                "data": {
+                    "controller_id": "IR Controller"
+                }
+            },
+            "select_device_for_remove": {
+                "title": "Select Device to Remove",
+                "description": "Choose device to remove from controller \"{controller_name}\".",
+                "data": {
+                    "device_id": "Device"
+                }
+            },
+            "confirm_remove_device": {
+                "title": "⚠️ Confirm Device Removal",
+                "description": "You are about to remove device \"{device_name}\" from controller \"{controller_name}\".\n\n⚠️ WARNING: ALL commands for this device will be deleted ({commands_count} commands).\n\nThis action cannot be undone!",
+                "data": {
+                    "confirm": "Yes, remove device"
+                }
+            },
+            "select_controller_for_remove_command": {
+                "title": "Select IR Controller",
+                "description": "Choose IR controller to remove command from.",
+                "data": {
+                    "controller_id": "IR Controller"
+                }
+            },
+            "select_device_for_remove_command": {
+                "title": "Select Device",
+                "description": "Choose device to remove command from in controller \"{controller_name}\".",
+                "data": {
+                    "device_id": "Device"
+                }
+            },
+            "select_command_for_remove": {
+                "title": "Select Command to Remove",
+                "description": "Choose command to remove from device \"{device_name}\".",
+                "data": {
+                    "command_id": "Command"
+                }
+            },
+            "confirm_remove_command": {
+                "title": "⚠️ Confirm Command Removal",
+                "description": "You are about to remove command \"{command_name}\" from device \"{device_name}\" (controller: \"{controller_name}\").\n\nThis action cannot be undone!",
+                "data": {
+                    "confirm": "Yes, remove command"
+                }
             },
             "manage": {
                 "title": "Data Management",
@@ -86,6 +138,7 @@
             "learn_timeout": "IR signal waiting timeout expired",
             "learn_failed": "Failed to receive IR signal",
             "add_device_failed": "Failed to add device",
+            "remove_failed": "Failed to remove. Please try again.",
             "no_devices": "This controller has no devices. Add a device first."
         },
         "abort": {
@@ -94,6 +147,9 @@
     },
     "entity": {
         "button": {
+            "add_command": {
+                "name": "Add Command"
+            },
             "device_command": {
                 "name": "{command_name}"
             }
@@ -186,6 +242,38 @@
                 }
             }
         },
+        "remove_device": {
+            "name": "Remove Device",
+            "description": "Removes virtual device and all its commands from IR controller",
+            "fields": {
+                "controller_id": {
+                    "name": "Controller ID",
+                    "description": "IR controller identifier"
+                },
+                "device": {
+                    "name": "Device",
+                    "description": "Device ID to remove"
+                }
+            }
+        },
+        "remove_command": {
+            "name": "Remove Command",
+            "description": "Removes command from device",
+            "fields": {
+                "controller_id": {
+                    "name": "Controller ID",
+                    "description": "IR controller identifier"
+                },
+                "device": {
+                    "name": "Device",
+                    "description": "Device ID"
+                },
+                "command": {
+                    "name": "Command",
+                    "description": "Command ID to remove"
+                }
+            }
+        },
         "get_data": {
             "name": "Get Data",
             "description": "Returns data about IR controllers, devices and commands",
@@ -203,6 +291,8 @@
                 "add_controller": "Add new IR controller",
                 "add_device": "Add virtual device", 
                 "add_command": "Add command to device",
+                "remove_device": "Remove virtual device",
+                "remove_command": "Remove device command",
                 "manage": "Manage existing data"
             }
         }
