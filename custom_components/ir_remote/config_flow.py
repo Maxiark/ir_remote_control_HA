@@ -11,6 +11,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 import homeassistant.helpers.config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er, device_registry as dr
+
 
 from .const import (
     DOMAIN,
@@ -536,18 +538,18 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             controller_id = self.flow_data[CONF_CONTROLLER_ID]
             device_id = self.flow_data["device_id"]
             
-            # Get device name before removal for display
+            # Get device name and commands before removal for display and cleanup
             device = self.storage.get_device(controller_id, device_id)
             device_name = device["name"] if device else "Unknown"
+            commands = self.storage.get_commands(controller_id, device_id)
             
             try:
                 success = await self.storage.async_remove_device(controller_id, device_id)
                 
                 if success:
-                    # Reload the config entry to update entities
-                    config_entry = self.hass.config_entries.async_get_entry(controller_id)
-                    if config_entry:
-                        await self.hass.config_entries.async_reload(controller_id)
+                    # Clean up entities and device
+                    await self._cleanup_device_entities(controller_id, device_id, commands)
+                    await self._cleanup_virtual_device(controller_id, device_id)
                     
                     return self.async_abort(
                         reason="device_removed",
@@ -564,7 +566,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors={"base": ERROR_REMOVE_FAILED}
                 )
         
-        # Show confirmation dialog
+        # Show confirmation dialog (rest remains the same)
         controller_id = self.flow_data[CONF_CONTROLLER_ID]
         device_id = self.flow_data["device_id"]
         
@@ -587,7 +589,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "commands_count": str(commands_count)
             }
         )
-
     
     
     async def async_step_select_controller_for_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
@@ -679,7 +680,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
     
-    async def async_step_confirm_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+     async def async_step_confirm_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Confirm command removal."""
         if user_input is not None and user_input.get("confirm", False):
             # User confirmed removal
@@ -699,10 +700,8 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 success = await self.storage.async_remove_command(controller_id, device_id, command_id)
                 
                 if success:
-                    # Reload the config entry to update entities
-                    config_entry = self.hass.config_entries.async_get_entry(controller_id)
-                    if config_entry:
-                        await self.hass.config_entries.async_reload(controller_id)
+                    # Clean up entity
+                    await self._cleanup_command_entity(controller_id, device_id, command_id)
                     
                     return self.async_abort(
                         reason="command_removed",
@@ -719,7 +718,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors={"base": ERROR_REMOVE_FAILED}
                 )
         
-        # Show confirmation dialog
+        # Show confirmation dialog (rest remains the same)
         controller_id = self.flow_data[CONF_CONTROLLER_ID]
         device_id = self.flow_data["device_id"]
         command_id = self.flow_data["command_id"]
@@ -780,6 +779,54 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
         """Get the options flow for this handler."""
         return IRRemoteOptionsFlowHandler(config_entry)
+
+
+    async def _cleanup_command_entity(self, controller_id: str, device_id: str, command_id: str) -> None:
+        """Remove command button entity from Entity Registry."""
+        entity_registry = er.async_get(self.hass)
+        
+        # Unique ID for command button
+        unique_id = f"{DOMAIN}_{controller_id}_{device_id}_{command_id}"
+        
+        # Find and remove entity
+        entity_id = entity_registry.async_get_entity_id("button", DOMAIN, unique_id)
+        if entity_id:
+            entity_registry.async_remove(entity_id)
+            _LOGGER.debug("Removed command entity: %s", entity_id)
+
+    async def _cleanup_device_entities(self, controller_id: str, device_id: str, commands: list) -> None:
+        """Remove all button entities for a device from Entity Registry."""
+        entity_registry = er.async_get(self.hass)
+        
+        # Remove all command button entities
+        for command in commands:
+            command_id = command["id"]
+            unique_id = f"{DOMAIN}_{controller_id}_{device_id}_{command_id}"
+            
+            entity_id = entity_registry.async_get_entity_id("button", DOMAIN, unique_id)
+            if entity_id:
+                entity_registry.async_remove(entity_id)
+                _LOGGER.debug("Removed command entity: %s", entity_id)
+        
+        # Remove "add command" button entity
+        add_command_unique_id = f"{DOMAIN}_{controller_id}_{device_id}_add_command"
+        add_command_entity_id = entity_registry.async_get_entity_id("button", DOMAIN, add_command_unique_id)
+        if add_command_entity_id:
+            entity_registry.async_remove(add_command_entity_id)
+            _LOGGER.debug("Removed add command entity: %s", add_command_entity_id)
+
+    async def _cleanup_virtual_device(self, controller_id: str, device_id: str) -> None:
+        """Remove virtual device from Device Registry."""
+        device_registry = dr.async_get(self.hass)
+        
+        # Device identifier for virtual device
+        device_identifier = (DOMAIN, f"{controller_id}_{device_id}")
+        
+        # Find and remove device
+        device_entry = device_registry.async_get_device(identifiers={device_identifier})
+        if device_entry:
+            device_registry.async_remove_device(device_entry.id)
+            _LOGGER.debug("Removed virtual device: %s", device_entry.name)
 
 
 class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):

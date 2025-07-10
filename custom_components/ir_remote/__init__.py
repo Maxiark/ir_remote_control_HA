@@ -10,7 +10,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError, ConfigEntryNotReady
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+
 
 from .const import (
     DOMAIN,
@@ -402,14 +403,20 @@ async def _register_services(hass: HomeAssistant) -> None:
         
         storage = entry_data["storage"]
         
-        # Remove device
+        # Get all commands for this device before removal (for entity cleanup)
+        commands = storage.get_commands(controller_id, device_id)
+        
+        # Remove device from storage
         success = await storage.async_remove_device(controller_id, device_id)
         if success:
             _LOGGER.info("Successfully removed device: %s", device_id)
-            # Reload the config entry to remove entities
-            config_entry = hass.config_entries.async_get_entry(controller_id)
-            if config_entry:
-                await hass.config_entries.async_reload(controller_id)
+            
+            # Clean up entities from Entity Registry
+            await _cleanup_device_entities(hass, controller_id, device_id, commands)
+            
+            # Clean up device from Device Registry
+            await _cleanup_virtual_device(hass, controller_id, device_id)
+            
         else:
             _LOGGER.error("Failed to remove device: %s", device_id)
             raise HomeAssistantError(f"Failed to remove device {device_id}")
@@ -430,14 +437,14 @@ async def _register_services(hass: HomeAssistant) -> None:
         
         storage = entry_data["storage"]
         
-        # Remove command
+        # Remove command from storage
         success = await storage.async_remove_command(controller_id, device_id, command_id)
         if success:
             _LOGGER.info("Successfully removed command: %s", command_id)
-            # Reload the config entry to remove entity
-            config_entry = hass.config_entries.async_get_entry(controller_id)
-            if config_entry:
-                await hass.config_entries.async_reload(controller_id)
+            
+            # Clean up entity from Entity Registry
+            await _cleanup_command_entity(hass, controller_id, device_id, command_id)
+            
         else:
             _LOGGER.error("Failed to remove command: %s", command_id)
             raise HomeAssistantError(f"Failed to remove command {command_id}")
@@ -584,6 +591,58 @@ async def _create_virtual_devices(hass: HomeAssistant, entry: ConfigEntry, stora
         
         _LOGGER.debug("Created virtual device: %s", device_name)
 
+async def _cleanup_command_entity(hass: HomeAssistant, controller_id: str, device_id: str, command_id: str) -> None:
+    """Remove command button entity from Entity Registry."""
+    entity_registry = er.async_get(hass)
+    
+    # Unique ID for command button
+    unique_id = f"{DOMAIN}_{controller_id}_{device_id}_{command_id}"
+    
+    # Find and remove entity
+    entity_id = entity_registry.async_get_entity_id("button", DOMAIN, unique_id)
+    if entity_id:
+        entity_registry.async_remove(entity_id)
+        _LOGGER.debug("Removed command entity: %s", entity_id)
+    else:
+        _LOGGER.debug("Command entity not found for cleanup: %s", unique_id)
+
+
+async def _cleanup_device_entities(hass: HomeAssistant, controller_id: str, device_id: str, commands: list) -> None:
+    """Remove all button entities for a device from Entity Registry."""
+    entity_registry = er.async_get(hass)
+    
+    # Remove all command button entities
+    for command in commands:
+        command_id = command["id"]
+        unique_id = f"{DOMAIN}_{controller_id}_{device_id}_{command_id}"
+        
+        entity_id = entity_registry.async_get_entity_id("button", DOMAIN, unique_id)
+        if entity_id:
+            entity_registry.async_remove(entity_id)
+            _LOGGER.debug("Removed command entity: %s", entity_id)
+    
+    # Remove "add command" button entity
+    add_command_unique_id = f"{DOMAIN}_{controller_id}_{device_id}_add_command"
+    add_command_entity_id = entity_registry.async_get_entity_id("button", DOMAIN, add_command_unique_id)
+    if add_command_entity_id:
+        entity_registry.async_remove(add_command_entity_id)
+        _LOGGER.debug("Removed add command entity: %s", add_command_entity_id)
+
+
+async def _cleanup_virtual_device(hass: HomeAssistant, controller_id: str, device_id: str) -> None:
+    """Remove virtual device from Device Registry."""
+    device_registry = dr.async_get(hass)
+    
+    # Device identifier for virtual device
+    device_identifier = (DOMAIN, f"{controller_id}_{device_id}")
+    
+    # Find and remove device
+    device_entry = device_registry.async_get_device(identifiers={device_identifier})
+    if device_entry:
+        device_registry.async_remove_device(device_entry.id)
+        _LOGGER.debug("Removed virtual device: %s", device_entry.name)
+    else:
+        _LOGGER.debug("Virtual device not found for cleanup: %s", device_identifier)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
