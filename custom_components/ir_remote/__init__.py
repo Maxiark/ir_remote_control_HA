@@ -275,10 +275,19 @@ async def _register_services(hass: HomeAssistant) -> None:
                 return_response=True
             )
             
-            if result and "attribute_value" in result:
-                ir_code = result["attribute_value"]
-                _LOGGER.info("Successfully read IR code (length: %d)", len(str(ir_code)))
-                
+            _LOGGER.debug("ZHA toolkit response: %s", result)
+            
+            ir_code = None
+            if result and "result_read" in result:
+                # result_read is a tuple: (dict_with_attributes, dict_with_other_data)
+                result_read = result["result_read"]
+                if isinstance(result_read, (list, tuple)) and len(result_read) > 0:
+                    attributes_dict = result_read[0]
+                    if isinstance(attributes_dict, dict) and 0 in attributes_dict:
+                        ir_code = attributes_dict[0]
+                        _LOGGER.info("Successfully read IR code from attribute 0 (length: %d)", len(str(ir_code)))
+            
+            if ir_code:
                 # Save the learned code
                 success = await storage.async_add_command(
                     controller_id, device_id, command_id, command_id, str(ir_code)
@@ -294,7 +303,7 @@ async def _register_services(hass: HomeAssistant) -> None:
                     _LOGGER.error("Failed to save learned command")
                     raise HomeAssistantError("Failed to save learned command")
             else:
-                _LOGGER.error("No IR code received or invalid response: %s", result)
+                _LOGGER.error("No IR code found in response. Full response: %s", result)
                 raise HomeAssistantError("No IR code received during learning")
                 
         except Exception as e:
