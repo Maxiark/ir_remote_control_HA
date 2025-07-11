@@ -12,7 +12,6 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-
 from .const import (
     DOMAIN,
     CONF_IEEE,
@@ -104,11 +103,33 @@ async def async_setup(hass: HomeAssistant, config: Dict[str, Any]) -> bool:
     # Initialize domain data
     hass.data.setdefault(DOMAIN, {})
     
-    # Register services
-    await _register_services(hass)
+    # НЕ регистрируем сервисы здесь - они будут регистрироваться в async_setup_entry
     
     _LOGGER.info("IR Remote integration setup completed")
     return True
+
+
+def _is_real_controller_entry(entry_data: Dict[str, Any]) -> bool:
+    """Check if config entry is a real controller (not temporary from config flow)."""
+    if not isinstance(entry_data, dict):
+        return False
+    
+    # Проверяем, что это не временная запись из config flow
+    config = entry_data.get("config", {})
+    if config.get("action") in ["device_added", "command_learning_started"]:
+        return False
+    
+    # Проверяем, что есть storage
+    return "storage" in entry_data
+
+
+def _count_active_controllers(hass: HomeAssistant) -> int:
+    """Count active controller entries (excluding temporary config flow entries)."""
+    count = 0
+    for entry_data in hass.data.get(DOMAIN, {}).values():
+        if _is_real_controller_entry(entry_data):
+            count += 1
+    return count
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -119,6 +140,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if "zha" not in hass.data:
         _LOGGER.error("ZHA integration not found")
         raise ConfigEntryNotReady("ZHA integration not available")
+    
+    # Skip setup for temporary config flow entries
+    if entry.data.get("action") in ["device_added", "command_learning_started"]:
+        # This is a temporary entry from config flow, remove it
+        _LOGGER.debug("Removing temporary config flow entry: %s", entry.data.get("action"))
+        await hass.config_entries.async_remove(entry.entry_id)
+        return True
     
     # Initialize storage for this controller
     storage = IRRemoteStorage(hass)
@@ -149,6 +177,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "config": entry.data,
     }
     
+    # Регистрируем сервисы только при добавлении первого реального контроллера
+    active_controllers_count = _count_active_controllers(hass)
+    _LOGGER.debug("Active controllers count: %d", active_controllers_count)
+    
+    if active_controllers_count == 1:
+        _LOGGER.info("Registering IR Remote services (first controller)")
+        await _register_services(hass)
+    else:
+        _LOGGER.debug("Services already registered, skipping registration")
+    
     # Register device
     await _register_ir_controller_device(hass, entry)
     
@@ -165,48 +203,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def _handle_command_learning(hass: HomeAssistant, entry: ConfigEntry, storage: IRRemoteStorage) -> None:
-    """Handle command learning flow."""
-    controller_id = entry.data[CONF_CONTROLLER_ID]
-    device_id = entry.data["device_id"]
-    command_id = entry.data["command_id"]
-    command_name = entry.data[CONF_COMMAND_NAME]
-    
-    _LOGGER.info("Starting command learning: %s - %s", device_id, command_name)
-    
-    # Start learning process
-    controller = storage.get_controller(controller_id)
-    if controller:
-        try:
-            await hass.services.async_call(
-                "zha",
-                "issue_zigbee_cluster_command",
-                {
-                    "ieee": controller["ieee"],
-                    "endpoint_id": controller["endpoint_id"],
-                    "cluster_id": controller["cluster_id"],
-                    "cluster_type": DEFAULT_CLUSTER_TYPE,
-                    "command": ZHA_COMMAND_LEARN,
-                    "command_type": DEFAULT_COMMAND_TYPE,
-                    "params": {
-                        "controller_id": controller_id,
-                        "device_id": device_id,
-                        "command_id": command_id,
-                        "command_name": command_name
-                    }
-                },
-                blocking=True
-            )
-            _LOGGER.info("Learning command sent to ZHA device")
-        except Exception as e:
-            _LOGGER.error("Failed to start learning: %s", e)
-    
-    # Remove this temporary entry
-    await hass.config_entries.async_remove(entry.entry_id)
-
-
 async def _register_services(hass: HomeAssistant) -> None:
     """Register services for IR Remote."""
+    _LOGGER.debug("Starting service registration")
     
     async def learn_command_service(call: ServiceCall) -> None:
         """Service to learn IR command."""
@@ -442,63 +441,63 @@ async def _register_services(hass: HomeAssistant) -> None:
         """Service to remove virtual device."""
         controller_id = call.data[ATTR_CONTROLLER_ID]
         device_id = call.data[ATTR_DEVICE]
-        
+
         _LOGGER.info("Removing device: %s from controller %s", device_id, controller_id)
-        
+
         # Get storage
         entry_data = hass.data[DOMAIN].get(controller_id)
         if not entry_data:
             _LOGGER.error("Controller %s not found", controller_id)
             raise HomeAssistantError(f"Controller {controller_id} not found")
-        
+
         storage = entry_data["storage"]
-        
+
         # Get all commands for this device before removal (for entity cleanup)
         commands = storage.get_commands(controller_id, device_id)
-        
+
         # Remove device from storage
         success = await storage.async_remove_device(controller_id, device_id)
         if success:
             _LOGGER.info("Successfully removed device: %s", device_id)
-            
+
             # Clean up entities from Entity Registry
             await _cleanup_device_entities(hass, controller_id, device_id, commands)
-            
+
             # Clean up device from Device Registry
             await _cleanup_virtual_device(hass, controller_id, device_id)
-            
+
         else:
             _LOGGER.error("Failed to remove device: %s", device_id)
             raise HomeAssistantError(f"Failed to remove device {device_id}")
-    
+
     async def remove_command_service(call: ServiceCall) -> None:
         """Service to remove command."""
         controller_id = call.data[ATTR_CONTROLLER_ID]
         device_id = call.data[ATTR_DEVICE]
         command_id = call.data[ATTR_COMMAND]
-        
+
         _LOGGER.info("Removing command: %s from device %s", command_id, device_id)
-        
+
         # Get storage
         entry_data = hass.data[DOMAIN].get(controller_id)
         if not entry_data:
             _LOGGER.error("Controller %s not found", controller_id)
             raise HomeAssistantError(f"Controller {controller_id} not found")
-        
+
         storage = entry_data["storage"]
-        
+
         # Remove command from storage
         success = await storage.async_remove_command(controller_id, device_id, command_id)
         if success:
             _LOGGER.info("Successfully removed command: %s", command_id)
-            
+
             # Clean up entity from Entity Registry
             await _cleanup_command_entity(hass, controller_id, device_id, command_id)
-            
+
         else:
             _LOGGER.error("Failed to remove command: %s", command_id)
             raise HomeAssistantError(f"Failed to remove command {command_id}")
-    
+
     async def get_data_service(call: ServiceCall) -> Dict[str, Any]:
         """Service to get IR Remote data."""
         controller_id = call.data.get(ATTR_CONTROLLER_ID)
@@ -516,89 +515,49 @@ async def _register_services(hass: HomeAssistant) -> None:
             # Get data for all controllers
             all_data = {}
             for entry_id, entry_data in hass.data[DOMAIN].items():
-                if isinstance(entry_data, dict) and "storage" in entry_data:
+                if _is_real_controller_entry(entry_data):
                     storage = entry_data["storage"]
                     controllers = storage.get_controllers()
                     all_data[entry_id] = controllers
             return all_data
     
     # Register services
-    hass.services.async_register(
-        DOMAIN, SERVICE_LEARN_COMMAND, learn_command_service, schema=LEARN_COMMAND_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_SEND_CODE, send_code_service, schema=SEND_CODE_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_SEND_COMMAND, send_command_service, schema=SEND_COMMAND_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_ADD_DEVICE, add_device_service, schema=ADD_DEVICE_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_ADD_COMMAND, add_command_service, schema=ADD_COMMAND_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_REMOVE_DEVICE, remove_device_service, schema=REMOVE_DEVICE_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_REMOVE_COMMAND, remove_command_service, schema=REMOVE_COMMAND_SCHEMA
-    )
-    hass.services.async_register(
-        DOMAIN, SERVICE_GET_DATA, get_data_service, schema=GET_DATA_SCHEMA, supports_response=True
-    )
+    services_to_register = [
+        (SERVICE_LEARN_COMMAND, learn_command_service, LEARN_COMMAND_SCHEMA),
+        (SERVICE_SEND_CODE, send_code_service, SEND_CODE_SCHEMA),
+        (SERVICE_SEND_COMMAND, send_command_service, SEND_COMMAND_SCHEMA),
+        (SERVICE_ADD_DEVICE, add_device_service, ADD_DEVICE_SCHEMA),
+        (SERVICE_ADD_COMMAND, add_command_service, ADD_COMMAND_SCHEMA),
+        (SERVICE_REMOVE_DEVICE, remove_device_service, REMOVE_DEVICE_SCHEMA),
+        (SERVICE_REMOVE_COMMAND, remove_command_service, REMOVE_COMMAND_SCHEMA),
+        (SERVICE_GET_DATA, get_data_service, GET_DATA_SCHEMA),
+    ]
     
-    _LOGGER.info("IR Remote services registered")
+    for service_name, service_func, schema in services_to_register:
+        if hass.services.has_service(DOMAIN, service_name):
+            _LOGGER.debug("Service %s already exists, skipping", service_name)
+            continue
+        
+        extra_kwargs = {}
+        if service_name == SERVICE_GET_DATA:
+            extra_kwargs["supports_response"] = True
+        
+        hass.services.async_register(
+            DOMAIN, service_name, service_func, schema=schema, **extra_kwargs
+        )
+        _LOGGER.debug("Registered service: %s", service_name)
+    
+    _LOGGER.info("IR Remote services registration completed")
 
 
 async def _setup_zha_event_handler(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Setup ZHA event handler for IR learning."""
+    # IR learning now uses direct attribute reading instead of events
+    # This function is kept for compatibility but does nothing
+    _LOGGER.debug("ZHA event handler setup (using direct attribute reading)")
     
-    async def handle_zha_event(event) -> None:
-        """Handle ZHA events for IR code learning."""
-        device_ieee = event.data.get("device_ieee")
-        endpoint_id = event.data.get("endpoint_id")
-        cluster_id = event.data.get("cluster_id")
-        args = event.data.get("args", {})
-        
-        # Check if this event is from our controller
-        if (device_ieee == entry.data[CONF_IEEE] and
-            endpoint_id == entry.data.get(CONF_ENDPOINT, 1) and
-            cluster_id == entry.data.get(CONF_CLUSTER, 57348)):
-            
-            _LOGGER.info("Received ZHA event from IR controller")
-            
-            # Check if this is a learned IR code
-            if "code" in args:
-                controller_id = args.get("controller_id", entry.entry_id)
-                device_id = args.get("device_id")
-                command_id = args.get("command_id")
-                command_name = args.get("command_name", command_id)
-                ir_code = args["code"]
-                
-                _LOGGER.info("Learned IR code: %s - %s (length: %d)", 
-                           device_id, command_name, len(ir_code))
-                
-                # Save the learned code
-                entry_data = hass.data[DOMAIN].get(controller_id)
-                if entry_data:
-                    storage = entry_data["storage"]
-                    success = await storage.async_add_command(
-                        controller_id, device_id, command_id, command_name, ir_code
-                    )
-                    
-                    if success:
-                        _LOGGER.info("Successfully saved learned command")
-                        # Reload config entry to create button entity
-                        await hass.config_entries.async_reload(controller_id)
-                    else:
-                        _LOGGER.error("Failed to save learned command")
-    
-    # Register event listener
-    remove_listener = hass.bus.async_listen("zha_event", handle_zha_event)
-    
-    # Store listener remover
-    hass.data[DOMAIN][entry.entry_id]["zha_listener"] = remove_listener
+    # Store empty listener remover for compatibility
+    hass.data[DOMAIN][entry.entry_id]["zha_listener"] = lambda: None
 
 
 async def _register_ir_controller_device(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -611,7 +570,7 @@ async def _register_ir_controller_device(hass: HomeAssistant, entry: ConfigEntry
         name=entry.title,
         manufacturer=MANUFACTURER,
         model=MODEL_CONTROLLER,
-        sw_version="2.0.0",
+        sw_version="2.0.1",
     )
     
     _LOGGER.debug("Registered IR controller device: %s", entry.title)
@@ -644,10 +603,10 @@ async def _create_virtual_devices(hass: HomeAssistant, entry: ConfigEntry, stora
 async def _cleanup_command_entity(hass: HomeAssistant, controller_id: str, device_id: str, command_id: str) -> None:
     """Remove command button entity from Entity Registry."""
     entity_registry = er.async_get(hass)
-    
+
     # Unique ID for command button
     unique_id = f"{DOMAIN}_{controller_id}_{device_id}_{command_id}"
-    
+
     # Find and remove entity
     entity_id = entity_registry.async_get_entity_id("button", DOMAIN, unique_id)
     if entity_id:
@@ -660,17 +619,17 @@ async def _cleanup_command_entity(hass: HomeAssistant, controller_id: str, devic
 async def _cleanup_device_entities(hass: HomeAssistant, controller_id: str, device_id: str, commands: list) -> None:
     """Remove all button entities for a device from Entity Registry."""
     entity_registry = er.async_get(hass)
-    
+
     # Remove all command button entities
     for command in commands:
         command_id = command["id"]
         unique_id = f"{DOMAIN}_{controller_id}_{device_id}_{command_id}"
-        
+
         entity_id = entity_registry.async_get_entity_id("button", DOMAIN, unique_id)
         if entity_id:
             entity_registry.async_remove(entity_id)
             _LOGGER.debug("Removed command entity: %s", entity_id)
-    
+
     # Remove "add command" button entity
     add_command_unique_id = f"{DOMAIN}_{controller_id}_{device_id}_add_command"
     add_command_entity_id = entity_registry.async_get_entity_id("button", DOMAIN, add_command_unique_id)
@@ -682,10 +641,10 @@ async def _cleanup_device_entities(hass: HomeAssistant, controller_id: str, devi
 async def _cleanup_virtual_device(hass: HomeAssistant, controller_id: str, device_id: str) -> None:
     """Remove virtual device from Device Registry."""
     device_registry = dr.async_get(hass)
-    
+
     # Device identifier for virtual device
     device_identifier = (DOMAIN, f"{controller_id}_{device_id}")
-    
+
     # Find and remove device
     device_entry = device_registry.async_get_device(identifiers={device_identifier})
     if device_entry:
@@ -706,21 +665,33 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry_data = hass.data[DOMAIN].get(entry.entry_id)
         if entry_data and "zha_listener" in entry_data:
             entry_data["zha_listener"]()
+            _LOGGER.debug("Removed ZHA event listener for %s", entry.entry_id)
         
         # Remove entry data
         hass.data[DOMAIN].pop(entry.entry_id, None)
         
-        # Remove services if no more entries
-        if not hass.data[DOMAIN]:
+        # Подсчитываем оставшиеся активные контроллеры
+        active_controllers_count = _count_active_controllers(hass)
+        _LOGGER.debug("Active controllers count after removal: %d", active_controllers_count)
+        
+        # Remove services if no more active controllers
+        if active_controllers_count == 0:
+            _LOGGER.info("Removing IR Remote services (no active controllers)")
             services = [
                 SERVICE_LEARN_COMMAND, SERVICE_SEND_CODE, SERVICE_SEND_COMMAND,
                 SERVICE_ADD_DEVICE, SERVICE_ADD_COMMAND, SERVICE_REMOVE_DEVICE,
                 SERVICE_REMOVE_COMMAND, SERVICE_GET_DATA
             ]
             for service in services:
-                hass.services.async_remove(DOMAIN, service)
+                if hass.services.has_service(DOMAIN, service):
+                    hass.services.async_remove(DOMAIN, service)
+                    _LOGGER.debug("Removed service: %s", service)
+                else:
+                    _LOGGER.debug("Service %s was not registered", service)
             
-            _LOGGER.info("Removed IR Remote services")
+            _LOGGER.info("All IR Remote services removed")
+        else:
+            _LOGGER.debug("Services kept (still have %d active controllers)", active_controllers_count)
     
     _LOGGER.info("IR Remote entry unloaded: %s", unload_ok)
     return unload_ok
