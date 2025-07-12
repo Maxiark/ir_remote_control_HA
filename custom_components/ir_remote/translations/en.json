@@ -157,6 +157,11 @@
             "device_command": {
                 "name": "{command_name}"
             }
+        },
+        "remote": {
+            "remote_device": {
+                "name": "{device_name} Remote"
+            }
         }
     },
     "services": {

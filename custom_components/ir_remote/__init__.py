@@ -45,7 +45,6 @@ from .data import IRRemoteStorage
 _LOGGER = logging.getLogger(__name__)
 
 # Platforms to load
-PLATFORMS = [Platform.BUTTON]
 
 # Config schema - integration only works with config entries
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)

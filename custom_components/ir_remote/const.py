@@ -86,11 +86,17 @@ STORAGE_KEY = "ir_remote_data"
 # Entity naming patterns
 ENTITY_COMMAND_BUTTON = "{device}_{command}"
 ENTITY_ADD_COMMAND_BUTTON = "{device}_add_command"
+ENTITY_REMOTE_DEVICE = "{device}_remote"
 
 # Device info
 MANUFACTURER = "IR Remote Integration"
 MODEL_CONTROLLER = "IR Controller"
 MODEL_VIRTUAL_DEVICE = "Virtual IR Device"
+MODEL_REMOTE_DEVICE = "Virtual IR Remote"
+
+# Remote command mapping for power control
+POWER_ON_COMMANDS = ["on", "power_on", "turn_on"]
+POWER_OFF_COMMANDS = ["off", "power_off", "turn_off"]
 
 # Validation constants
 MAX_NAME_LENGTH = 50
@@ -99,3 +105,4 @@ ALLOWED_NAME_PATTERN = r"^[a-zA-Z0-9\s\-_а-яёА-ЯЁ]+$"
 # Translation keys
 TRANSLATION_KEY_ADD_COMMAND = "add_command"
 TRANSLATION_KEY_DEVICE_COMMAND = "device_command"
+TRANSLATION_KEY_REMOTE_DEVICE = "remote_device"
