@@ -241,7 +241,7 @@ class IRRemoteStorage:
         
         self._data["controllers"][controller_id]["devices"][device_id] = {
             "name": device_name,
-            "type": device_type,  # Добавлено поле типа устройства
+            "type": device_type,
             "commands": {}
         }
         

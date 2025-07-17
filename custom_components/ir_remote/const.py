@@ -22,6 +22,7 @@ DEFAULT_ENDPOINT_ID = 1
 CONF_ACTION = "action"
 CONF_CONTROLLER_ID = "controller_id" 
 CONF_DEVICE_NAME = "device_name"
+CONF_DEVICE_TYPE = "device_type"
 CONF_COMMAND_NAME = "command_name"
 
 # Config Flow actions
@@ -121,8 +122,8 @@ STANDARD_COMMANDS = {
 }
 
 # Power commands mapping
-POWER_ON_COMMANDS = ["on", "power_on", "turn_on", "включить", "вкл", "power", "вклвыкл", "on_off"]
-POWER_OFF_COMMANDS = ["off", "power_off", "turn_off", "выключить", "выкл", "вклвыкл", "on_off"]
+POWER_ON_COMMANDS = ["power", "on", "power_on", "turn_on"]
+POWER_OFF_COMMANDS = ["power", "off", "power_off", "turn_off"]
 
 # Error codes
 ERROR_NO_DEVICE = "device_not_found"

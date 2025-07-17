@@ -24,6 +24,7 @@ from .const import (
     CONF_ACTION,
     CONF_CONTROLLER_ID,
     CONF_DEVICE_NAME,
+    CONF_DEVICE_TYPE,  
     CONF_COMMAND_NAME,
     ACTION_ADD_CONTROLLER,
     ACTION_ADD_DEVICE,
@@ -42,6 +43,7 @@ from .const import (
     STEP_INIT,
     STEP_ADD_CONTROLLER,
     STEP_ADD_DEVICE,
+    STEP_SELECT_DEVICE_TYPE,  
     STEP_ADD_COMMAND,
     STEP_LEARN_COMMAND,
     STEP_MANAGE,
@@ -52,7 +54,9 @@ from .const import (
     ERROR_INVALID_NAME,
     DEFAULT_ENDPOINT_ID,
     DEFAULT_CLUSTER_ID,
+    DEVICE_TYPES,  
 )
+
 from .data import IRRemoteStorage
 
 _LOGGER = logging.getLogger(__name__)
@@ -344,7 +348,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     
                     return self.async_abort(
-                        reason="device_added_success",
+                        reason="device_added",
                         description_placeholders={
                             "device_name": device_name
                         }
@@ -359,9 +363,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     step_id=STEP_SELECT_DEVICE_TYPE,
                     errors={"base": "add_device_failed"}
                 )
-        
-        # Import here to avoid circular import
-        from .const import DEVICE_TYPES
         
         return self.async_show_form(
             step_id=STEP_SELECT_DEVICE_TYPE,
