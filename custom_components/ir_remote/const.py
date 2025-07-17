@@ -95,8 +95,8 @@ MODEL_VIRTUAL_DEVICE = "Virtual IR Device"
 MODEL_REMOTE_DEVICE = "Virtual IR Remote"
 
 # Remote command mapping for power control
-POWER_ON_COMMANDS = ["on", "power_on", "turn_on"]
-POWER_OFF_COMMANDS = ["off", "power_off", "turn_off"]
+POWER_ON_COMMANDS = ["on", "power_on", "turn_on", "включить", "вкл", "power", "вклвыкл", "on_off"]
+POWER_OFF_COMMANDS = ["off", "power_off", "turn_off", "выключить", "выкл", "вклвыкл", "on_off"]
 
 # Validation constants
 MAX_NAME_LENGTH = 50

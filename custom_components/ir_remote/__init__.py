@@ -374,10 +374,15 @@ async def _register_services(hass: HomeAssistant) -> None:
             return
         
         # Send the code
-        await send_code_service(ServiceCall(DOMAIN, SERVICE_SEND_CODE, {
-            ATTR_CONTROLLER_ID: controller_id,
-            ATTR_CODE: code
-        }))
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SEND_CODE,
+            {
+                ATTR_CONTROLLER_ID: controller_id,
+                ATTR_CODE: code
+            },
+            blocking=True
+        )
     
     async def add_device_service(call: ServiceCall) -> None:
         """Service to add virtual device."""
