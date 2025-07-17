@@ -54,8 +54,9 @@ async def async_setup_entry(
     for device in devices:
         device_id = device["id"]
         device_name = device["name"]
+        device_type = device.get("type", "universal")  # Добавлено получение типа
         
-        _LOGGER.debug("Processing device: %s (%s)", device_name, device_id)
+        _LOGGER.info("Processing device: %s (%s) - type: %s", device_name, device_id, device_type)
         
         # Get all commands for this device
         commands = storage.get_commands(controller_id, device_id)

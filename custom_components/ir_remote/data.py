@@ -351,6 +351,7 @@ class IRRemoteStorage:
         
         return self._data.get("controllers", {}).get(controller_id)
     
+    
     def get_devices(self, controller_id: str) -> List[Dict[str, Any]]:
         """Get list of devices for controller."""
         controller = self.get_controller(controller_id)
@@ -362,6 +363,7 @@ class IRRemoteStorage:
             devices.append({
                 "id": device_id,
                 "name": device_data.get("name", "Unknown Device"),
+                "type": device_data.get("type", "universal"),  # ДОБАВЛЕНО: возвращаем тип
                 "command_count": len(device_data.get("commands", {}))
             })
         
@@ -373,7 +375,17 @@ class IRRemoteStorage:
         if not controller:
             return None
         
-        return controller.get("devices", {}).get(device_id)
+        device_data = controller.get("devices", {}).get(device_id)
+        if not device_data:
+            return None
+        
+        # Возвращаем полные данные устройства включая тип
+        return {
+            "id": device_id,
+            "name": device_data.get("name", "Unknown Device"),
+            "type": device_data.get("type", "universal"),  # ДОБАВЛЕНО: возвращаем тип
+            "commands": device_data.get("commands", {})
+        }
     
     def get_commands(self, controller_id: str, device_id: str) -> List[Dict[str, Any]]:
         """Get list of commands for device."""

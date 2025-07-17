@@ -66,6 +66,8 @@ async def async_setup_entry(
         device_name = device["name"]
         device_type = device.get("type", "universal")
         
+        _LOGGER.info("Processing device: %s (%s) - type: %s", device_name, device_id, device_type)
+        
         # Only create climate entity for AC devices
         if device_type == DEVICE_TYPE_AC:
             _LOGGER.debug("Creating climate entity for device: %s", device_name)

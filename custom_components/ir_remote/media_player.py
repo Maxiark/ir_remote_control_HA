@@ -67,6 +67,8 @@ async def async_setup_entry(
         device_name = device["name"]
         device_type = device.get("type", "universal")
         
+        _LOGGER.info("Processing device: %s (%s) - type: %s", device_name, device_id, device_type)
+        
         # Only create media player for supported types
         if device_type in MEDIA_PLAYER_TYPES:
             _LOGGER.debug("Creating media player for device: %s (%s)", device_name, device_type)

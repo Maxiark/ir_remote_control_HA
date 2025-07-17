@@ -60,6 +60,8 @@ async def async_setup_entry(
         device_name = device["name"]
         device_type = device.get("type", "universal")
         
+        _LOGGER.info("Processing device: %s (%s) - type: %s", device_name, device_id, device_type)
+        
         # Only create remote entity for universal devices
         if device_type == DEVICE_TYPE_UNIVERSAL:
             _LOGGER.debug("Creating remote entity for device: %s", device_name)
@@ -243,10 +245,14 @@ class IRRemoteDevice(RemoteEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
+        # Получаем актуальный тип устройства из storage
+        device_data = self._storage.get_device(self._controller_id, self._device_id)
+        device_type = device_data.get("type", "universal") if device_data else "universal"
+        
         return {
             "device_id": self._device_id,
             "controller_id": self._controller_id,
             "last_command": self._last_command,
             "available_commands": len(self._attr_activity_list or []),
-            "device_type": "universal",
+            "device_type": device_type,
         }
