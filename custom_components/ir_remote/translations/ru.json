@@ -44,6 +44,13 @@
                     "device_name": "Например: Телевизор, Аудиосистема, Кондиционер"
                 }
             },
+            "select_device_type": {
+                "title": "Выбор типа устройства",
+                "description": "Выберите тип устройства \"{device_name}\" для правильного отображения в умных домах.",
+                "data": {
+                    "device_type": "Тип устройства"
+                }
+            },
             "select_controller_for_command": {
                 "title": "Выбор ИК-пульта",
                 "description": "Выберите ИК-пульт для добавления команды.",
@@ -161,6 +168,16 @@
         "remote": {
             "remote_device": {
                 "name": "{device_name} Пульт"
+            }
+        },
+        "media_player": {
+            "media_player": {
+                "name": "{device_name}"
+            }
+        },
+        "climate": {
+            "climate": {
+                "name": "{device_name}"
             }
         }
     },
@@ -303,6 +320,15 @@
                 "remove_device": "Удалить виртуальное устройство",
                 "remove_command": "Удалить команду устройства",
                 "manage": "Управление существующими данными"
+            }
+        },
+        "device_type": {
+            "options": {
+                "tv": "Телевизор",
+                "audio": "Аудиосистема",
+                "projector": "Проектор",
+                "ac": "Кондиционер", 
+                "universal": "Другой пульт"
             }
         }
     }

@@ -223,7 +223,7 @@ class IRRemoteStorage:
         
         return success
     
-    async def async_add_device(self, controller_id: str, device_id: str, device_name: str) -> bool:
+    async def async_add_device(self, controller_id: str, device_id: str, device_name: str, device_type: str = "universal") -> bool:
         """Add virtual device to controller."""
         if not self._validate_name(device_name):
             _LOGGER.warning("Invalid device name: %s", device_name)
@@ -241,12 +241,13 @@ class IRRemoteStorage:
         
         self._data["controllers"][controller_id]["devices"][device_id] = {
             "name": device_name,
+            "type": device_type,  # Добавлено поле типа устройства
             "commands": {}
         }
         
         success = await self.async_save()
         if success:
-            _LOGGER.info("Added device %s to controller %s", device_name, controller_id)
+            _LOGGER.info("Added device %s (%s) to controller %s", device_name, device_type, controller_id)
         
         return success
     

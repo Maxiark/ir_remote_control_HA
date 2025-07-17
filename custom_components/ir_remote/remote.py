@@ -1,4 +1,4 @@
-"""Remote platform for IR Remote integration."""
+"""Remote platform for IR Remote integration (Universal devices)."""
 import logging
 from typing import Any, Iterable, Optional
 
@@ -17,6 +17,7 @@ from .const import (
     MANUFACTURER,
     MODEL_REMOTE_DEVICE,
     TRANSLATION_KEY_REMOTE_DEVICE,
+    DEVICE_TYPE_UNIVERSAL,
     POWER_ON_COMMANDS,
     POWER_OFF_COMMANDS,
 )
@@ -57,20 +58,23 @@ async def async_setup_entry(
     for device in devices:
         device_id = device["id"]
         device_name = device["name"]
+        device_type = device.get("type", "universal")
         
-        _LOGGER.debug("Creating remote entity for device: %s (%s)", device_name, device_id)
-        
-        # Create remote entity for this device
-        remote = IRRemoteDevice(
-            hass=hass,
-            config_entry=config_entry,
-            controller_id=controller_id,
-            device_id=device_id,
-            device_name=device_name,
-            storage=storage,
-        )
-        remotes.append(remote)
-        _LOGGER.debug("Created remote entity for device %s", device_name)
+        # Only create remote entity for universal devices
+        if device_type == DEVICE_TYPE_UNIVERSAL:
+            _LOGGER.debug("Creating remote entity for device: %s", device_name)
+            
+            # Create remote entity for this device
+            remote = IRRemoteDevice(
+                hass=hass,
+                config_entry=config_entry,
+                controller_id=controller_id,
+                device_id=device_id,
+                device_name=device_name,
+                storage=storage,
+            )
+            remotes.append(remote)
+            _LOGGER.debug("Created remote entity for device %s", device_name)
     
     _LOGGER.info("Created %d remote entities for controller %s", len(remotes), controller_id)
     
@@ -79,7 +83,7 @@ async def async_setup_entry(
 
 
 class IRRemoteDevice(RemoteEntity):
-    """Remote entity for IR device."""
+    """Remote entity for universal IR devices."""
     
     def __init__(
         self,
@@ -244,4 +248,5 @@ class IRRemoteDevice(RemoteEntity):
             "controller_id": self._controller_id,
             "last_command": self._last_command,
             "available_commands": len(self._attr_activity_list or []),
+            "device_type": "universal",
         }

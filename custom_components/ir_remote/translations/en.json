@@ -44,6 +44,13 @@
                     "device_name": "For example: TV, Audio System, Air Conditioner"
                 }
             },
+            "select_device_type": {
+                "title": "Select Device Type",
+                "description": "Choose the type of device \"{device_name}\" for proper display in Smart Home.",
+                "data": {
+                    "device_type": "Device Type"
+                }
+            },
             "select_controller_for_command": {
                 "title": "Select IR Controller",
                 "description": "Choose IR controller to add command to.",
@@ -161,6 +168,16 @@
         "remote": {
             "remote_device": {
                 "name": "{device_name} Remote"
+            }
+        },
+        "media_player": {
+            "media_player": {
+                "name": "{device_name}"
+            }
+        },
+        "climate": {
+            "climate": {
+                "name": "{device_name}"
             }
         }
     },
@@ -303,6 +320,15 @@
                 "remove_device": "Remove virtual device",
                 "remove_command": "Remove device command",
                 "manage": "Manage existing data"
+            }
+        },
+        "device_type": {
+            "options": {
+                "tv": "Television",
+                "audio": "Audio System",
+                "projector": "Projector",
+                "ac": "Air Conditioner", 
+                "universal": "Universal Device"
             }
         }
     }

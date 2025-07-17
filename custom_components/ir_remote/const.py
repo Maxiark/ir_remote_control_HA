@@ -10,6 +10,7 @@ CONF_CLUSTER = "cluster_id"
 CONF_CLUSTER_TYPE = "cluster_type"
 CONF_COMMAND_TYPE = "command_type"
 CONF_ROOM_NAME = "room_name"
+CONF_DEVICE_TYPE = "device_type"
 
 # Default values for ZHA
 DEFAULT_CLUSTER_ID = 57348
@@ -36,6 +37,7 @@ STEP_INIT = "init"
 STEP_SELECT_CONTROLLER = "select_controller"
 STEP_ADD_CONTROLLER = "add_controller"
 STEP_ADD_DEVICE = "add_device"
+STEP_SELECT_DEVICE_TYPE = "select_device_type"
 STEP_ADD_COMMAND = "add_command"
 STEP_LEARN_COMMAND = "learn_command"
 STEP_SELECT_CONTROLLER_FOR_REMOVE_DEVICE = "select_controller_for_remove_device"
@@ -46,6 +48,81 @@ STEP_SELECT_DEVICE_FOR_REMOVE_COMMAND = "select_device_for_remove_command"
 STEP_SELECT_COMMAND_FOR_REMOVE = "select_command_for_remove"
 STEP_CONFIRM_REMOVE_COMMAND = "confirm_remove_command"
 STEP_MANAGE = "manage"
+
+# Device types
+DEVICE_TYPE_TV = "tv"
+DEVICE_TYPE_AUDIO = "audio"
+DEVICE_TYPE_PROJECTOR = "projector"
+DEVICE_TYPE_AC = "ac"
+DEVICE_TYPE_UNIVERSAL = "universal"
+
+DEVICE_TYPES = {
+    DEVICE_TYPE_TV: "Телевизор",
+    DEVICE_TYPE_AUDIO: "Аудиосистема", 
+    DEVICE_TYPE_PROJECTOR: "Проектор",
+    DEVICE_TYPE_AC: "Кондиционер",
+    DEVICE_TYPE_UNIVERSAL: "Универсальное устройство"
+}
+
+# Media player device types
+MEDIA_PLAYER_TYPES = [DEVICE_TYPE_TV, DEVICE_TYPE_AUDIO, DEVICE_TYPE_PROJECTOR]
+
+# Standard commands for device types
+STANDARD_COMMANDS = {
+    DEVICE_TYPE_TV: {
+        "power": "Питание",
+        "volume_up": "Громче",
+        "volume_down": "Тише", 
+        "mute": "Без звука",
+        "channel_up": "Канал +",
+        "channel_down": "Канал -",
+        "menu": "Меню",
+        "home": "Домой",
+        "back": "Назад",
+        "ok": "ОК",
+        "up": "Вверх",
+        "down": "Вниз", 
+        "left": "Влево",
+        "right": "Вправо"
+    },
+    DEVICE_TYPE_AUDIO: {
+        "power": "Питание",
+        "volume_up": "Громче",
+        "volume_down": "Тише",
+        "mute": "Без звука",
+        "play": "Воспроизведение",
+        "pause": "Пауза",
+        "stop": "Стоп",
+        "next": "Следующий",
+        "previous": "Предыдущий",
+        "source": "Источник"
+    },
+    DEVICE_TYPE_PROJECTOR: {
+        "power": "Питание",
+        "volume_up": "Громче", 
+        "volume_down": "Тише",
+        "mute": "Без звука",
+        "menu": "Меню",
+        "source": "Источник",
+        "zoom_in": "Увеличить",
+        "zoom_out": "Уменьшить"
+    },
+    DEVICE_TYPE_AC: {
+        "power": "Питание",
+        "temp_up": "Температура +",
+        "temp_down": "Температура -",
+        "mode_cool": "Охлаждение",
+        "mode_heat": "Обогрев", 
+        "mode_auto": "Авто",
+        "mode_fan": "Вентилятор",
+        "fan_speed": "Скорость вентилятора",
+        "swing": "Поворот"
+    }
+}
+
+# Power commands mapping
+POWER_ON_COMMANDS = ["on", "power_on", "turn_on", "включить", "вкл", "power", "вклвыкл", "on_off"]
+POWER_OFF_COMMANDS = ["off", "power_off", "turn_off", "выключить", "выкл", "вклвыкл", "on_off"]
 
 # Error codes
 ERROR_NO_DEVICE = "device_not_found"
@@ -85,18 +162,17 @@ STORAGE_KEY = "ir_remote_data"
 
 # Entity naming patterns
 ENTITY_COMMAND_BUTTON = "{device}_{command}"
-ENTITY_ADD_COMMAND_BUTTON = "{device}_add_command"
+ENTITY_MEDIA_PLAYER = "{device}_player"
+ENTITY_CLIMATE = "{device}_climate"
 ENTITY_REMOTE_DEVICE = "{device}_remote"
 
 # Device info
 MANUFACTURER = "IR Remote Integration"
 MODEL_CONTROLLER = "IR Controller"
 MODEL_VIRTUAL_DEVICE = "Virtual IR Device"
-MODEL_REMOTE_DEVICE = "Virtual IR Remote"
-
-# Remote command mapping for power control
-POWER_ON_COMMANDS = ["on", "power_on", "turn_on", "включить", "вкл", "power", "вклвыкл", "on_off"]
-POWER_OFF_COMMANDS = ["off", "power_off", "turn_off", "выключить", "выкл", "вклвыкл", "on_off"]
+MODEL_MEDIA_PLAYER = "IR Media Player"
+MODEL_CLIMATE = "IR Climate"
+MODEL_REMOTE_DEVICE = "IR Remote"
 
 # Validation constants
 MAX_NAME_LENGTH = 50
@@ -105,4 +181,6 @@ ALLOWED_NAME_PATTERN = r"^[a-zA-Z0-9\s\-_а-яёА-ЯЁ]+$"
 # Translation keys
 TRANSLATION_KEY_ADD_COMMAND = "add_command"
 TRANSLATION_KEY_DEVICE_COMMAND = "device_command"
+TRANSLATION_KEY_MEDIA_PLAYER = "media_player"
+TRANSLATION_KEY_CLIMATE = "climate"
 TRANSLATION_KEY_REMOTE_DEVICE = "remote_device"

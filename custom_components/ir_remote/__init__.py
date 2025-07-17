@@ -39,13 +39,14 @@ from .const import (
     MANUFACTURER,
     MODEL_CONTROLLER,
     MODEL_VIRTUAL_DEVICE,
+    DEVICE_TYPE_UNIVERSAL,
 )
 from .data import IRRemoteStorage
 
 _LOGGER = logging.getLogger(__name__)
 
 # Platforms to load
-PLATFORMS = [Platform.BUTTON, Platform.REMOTE]
+PLATFORMS = [Platform.BUTTON, Platform.REMOTE, Platform.MEDIA_PLAYER, Platform.CLIMATE]
 
 # Config schema - integration only works with config entries
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -403,7 +404,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         device_id = device_name.lower().replace(" ", "_").replace("-", "_")
         
         # Add device
-        success = await storage.async_add_device(controller_id, device_id, device_name)
+        success = await storage.async_add_device(controller_id, device_id, device_name, DEVICE_TYPE_UNIVERSAL)
         if success:
             # Reload the config entry to create new entities
             config_entry = hass.config_entries.async_get_entry(controller_id)
@@ -575,7 +576,7 @@ async def _register_ir_controller_device(hass: HomeAssistant, entry: ConfigEntry
         name=entry.title,
         manufacturer=MANUFACTURER,
         model=MODEL_CONTROLLER,
-        sw_version="2.0.1",
+        sw_version="2.1.0",
     )
     
     _LOGGER.debug("Registered IR controller device: %s", entry.title)
@@ -635,12 +636,18 @@ async def _cleanup_device_entities(hass: HomeAssistant, controller_id: str, devi
             entity_registry.async_remove(entity_id)
             _LOGGER.debug("Removed command entity: %s", entity_id)
 
-    # Remove "add command" button entity
-    add_command_unique_id = f"{DOMAIN}_{controller_id}_{device_id}_add_command"
-    add_command_entity_id = entity_registry.async_get_entity_id("button", DOMAIN, add_command_unique_id)
-    if add_command_entity_id:
-        entity_registry.async_remove(add_command_entity_id)
-        _LOGGER.debug("Removed add command entity: %s", add_command_entity_id)
+    # Remove other entities (remote, media_player, climate)
+    entity_types_to_remove = [
+        ("remote", f"{DOMAIN}_{controller_id}_{device_id}_remote"),
+        ("media_player", f"{DOMAIN}_{controller_id}_{device_id}_player"),
+        ("climate", f"{DOMAIN}_{controller_id}_{device_id}_climate"),
+    ]
+    
+    for platform, unique_id in entity_types_to_remove:
+        entity_id = entity_registry.async_get_entity_id(platform, DOMAIN, unique_id)
+        if entity_id:
+            entity_registry.async_remove(entity_id)
+            _LOGGER.debug("Removed %s entity: %s", platform, entity_id)
 
 
 async def _cleanup_virtual_device(hass: HomeAssistant, controller_id: str, device_id: str) -> None:
