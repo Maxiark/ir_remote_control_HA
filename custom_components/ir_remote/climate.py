@@ -125,10 +125,8 @@ class IRClimate(ClimateEntity):
             via_device=(DOMAIN, controller_id),
         )
         
-        # Climate settings
+        # Climate settings - будут обновлены из доступных команд
         self._attr_temperature_unit = UnitOfTemperature.CELSIUS
-        self._attr_min_temp = 16
-        self._attr_max_temp = 30
         self._attr_target_temperature_step = 1
         
         # Current state
@@ -145,9 +143,13 @@ class IRClimate(ClimateEntity):
             HVACMode.HEAT,
             HVACMode.AUTO,
             HVACMode.FAN_ONLY,
+            HVACMode.DRY,
         ]
         
         self._attr_fan_modes = ["auto", "low", "medium", "high"]
+        
+        # Analyze available commands and set temperature range
+        self._update_temperature_range()
         
         # Set supported features
         self._attr_supported_features = (
@@ -157,7 +159,8 @@ class IRClimate(ClimateEntity):
             ClimateEntityFeature.TURN_OFF
         )
         
-        _LOGGER.debug("Initialized climate entity: %s", device_name)
+        _LOGGER.debug("Initialized climate entity: %s (temp range: %s-%s)", 
+                     device_name, self._attr_min_temp, self._attr_max_temp)
     
     def _find_command(self, command_names: list) -> Optional[str]:
         """Find command from available commands."""
@@ -243,34 +246,68 @@ class IRClimate(ClimateEntity):
         else:
             _LOGGER.warning("No command found for HVAC mode %s", hvac_mode)
     
+    def _update_temperature_range(self) -> None:
+        """Update temperature range based on available commands."""
+        commands = self._storage.get_commands(self._controller_id, self._device_id)
+        temp_commands = []
+        
+        # Find all temperature commands (temp_18, temp_19, etc.)
+        for command in commands:
+            command_id = command["id"].lower()
+            if command_id.startswith("temp_"):
+                try:
+                    temp_value = int(command_id.split("_")[1])
+                    temp_commands.append(temp_value)
+                except (ValueError, IndexError):
+                    continue
+        
+        if temp_commands:
+            # Set range based on available commands
+            self._attr_min_temp = min(temp_commands)
+            self._attr_max_temp = max(temp_commands)
+            _LOGGER.info("Found temperature commands for %s: %s-%s°C", 
+                        self._device_name, self._attr_min_temp, self._attr_max_temp)
+        else:
+            # Default range if no temp commands found
+            self._attr_min_temp = 16
+            self._attr_max_temp = 30
+            _LOGGER.info("No temperature commands found for %s, using default range: %s-%s°C", 
+                        self._device_name, self._attr_min_temp, self._attr_max_temp)
+    
+    def _find_temperature_command(self, temperature: int) -> Optional[str]:
+        """Find exact temperature command."""
+        commands = self._storage.get_commands(self._controller_id, self._device_id)
+        
+        # Look for exact temperature command
+        target_command = f"temp_{temperature}"
+        for command in commands:
+            if command["id"].lower() == target_command:
+                return command["id"]
+        
+        _LOGGER.warning("No command found for temperature %s°C", temperature)
+        return None
+    
     async def async_set_temperature(self, **kwargs) -> None:
         """Set new target temperature."""
         temperature = kwargs.get("temperature")
         if temperature is None:
             return
         
+        # Round to nearest integer
+        temperature = round(temperature)
+        
         _LOGGER.info("Setting temperature to %s°C for %s", temperature, self._device_name)
         
-        # Calculate temperature difference
-        temp_diff = int(temperature - self._target_temperature)
+        # Find exact temperature command
+        temp_command = self._find_temperature_command(temperature)
         
-        if temp_diff > 0:
-            # Increase temperature
-            command = self._find_command(["temp_up", "temperature_up", "temp+"])
-            for _ in range(abs(temp_diff)):
-                if command:
-                    await self._send_command(command)
-        elif temp_diff < 0:
-            # Decrease temperature
-            command = self._find_command(["temp_down", "temperature_down", "temp-"])
-            for _ in range(abs(temp_diff)):
-                if command:
-                    await self._send_command(command)
-        
-        if temp_diff != 0:
+        if temp_command:
+            await self._send_command(temp_command)
             self._target_temperature = temperature
             self.async_write_ha_state()
-            _LOGGER.info("Set target temperature to %s°C", temperature)
+            _LOGGER.info("Set target temperature to %s°C with command %s", temperature, temp_command)
+        else:
+            _LOGGER.error("No temperature command found for %s°C", temperature)
     
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set new target fan mode."""
