@@ -141,8 +141,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_select_controller_for_remove_device() 
             elif action == ACTION_REMOVE_COMMAND:
                 return await self.async_step_select_controller_for_remove_command()
-            elif action == ACTION_MANAGE:
-                return await self.async_step_manage()
         
         # Initialize storage and clean up orphaned data
         controllers = await self._get_valid_controllers()
@@ -155,8 +153,7 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ACTION_ADD_DEVICE: "Добавить виртуальное устройство",
                 ACTION_ADD_COMMAND: "Добавить команду к устройству", 
                 ACTION_REMOVE_DEVICE: "Удалить виртуальное устройство",
-                ACTION_REMOVE_COMMAND: "Удалить команду устройства",
-                ACTION_MANAGE: "Управление существующими данными"
+                ACTION_REMOVE_COMMAND: "Удалить команду устройства"
             })
         
         return self.async_show_form(
@@ -638,30 +635,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception as e:
             _LOGGER.error("Failed to start learning directly: %s", e)
     
-    async def async_step_manage(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
-        """Handle management of existing data."""
-        controllers = await self._get_valid_controllers()
-        
-        total_devices = sum(controller["device_count"] for controller in controllers)
-        total_commands = 0
-        
-        for controller in controllers:
-            controller_id = controller["id"]
-            devices = self.storage.get_devices(controller_id)
-            for device in devices:
-                device_id = device["id"]
-                commands = self.storage.get_commands(controller_id, device_id)
-                total_commands += len(commands)
-        
-        return self.async_abort(
-            reason="manage_completed",
-            description_placeholders={
-                "controllers_count": str(len(controllers)),
-                "devices_count": str(total_devices),
-                "commands_count": str(total_commands)
-            }
-        )
-    
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
@@ -1042,8 +1015,6 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
                 return await self.async_step_select_device_for_remove()
             elif action == "remove_command":
                 return await self.async_step_select_device_for_remove_command()
-            elif action == "manage":
-                return await self.async_step_manage()
         
         # Get statistics for this controller
         devices = self.storage.get_devices(controller_id)
@@ -1056,8 +1027,7 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
             actions.update({
                 "add_command": "Добавить команду к устройству",
                 "remove_device": "Удалить виртуальное устройство",
-                "remove_command": "Удалить команду устройства",
-                "manage": "Просмотр данных пульта"
+                "remove_command": "Удалить команду устройства"
             })
         
         return self.async_show_form(
@@ -1435,24 +1405,6 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
                 "controller_name": controller["name"] if controller else "Неизвестный пульт",
                 "device_name": device["name"] if device else "Неизвестное устройство",
                 "command_name": command_name
-            }
-        )
-    
-    async def async_step_manage(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
-        """Handle management of existing data for this controller."""
-        controller_id = self.config_entry.entry_id
-        controller = self.storage.get_controller(controller_id)
-        devices = self.storage.get_devices(controller_id)
-        
-        total_commands = sum(device["command_count"] for device in devices)
-        
-        return self.async_create_entry(
-            title="",
-            data={},
-            description_placeholders={
-                "controller_name": controller["name"] if controller else "Неизвестный пульт",
-                "devices_count": str(len(devices)),
-                "commands_count": str(total_commands)
             }
         )
     

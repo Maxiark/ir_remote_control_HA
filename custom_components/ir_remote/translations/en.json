@@ -130,10 +130,6 @@
                 "data": {
                     "confirm": "Yes, remove command"
                 }
-            },
-            "manage": {
-                "title": "Data Management",
-                "description": "Current IR Remote status:\n\n• Controllers: {controllers_count}\n• Devices: {devices_count}\n• Commands: {commands_count}\n\nUse Developer Tools → Services for programmatic device and command management."
             }
         },
         "error": {
@@ -233,10 +229,6 @@
                 "data": {
                     "confirm": "Yes, remove command"
                 }
-            },
-            "manage": {
-                "title": "Controller Data: {controller_name}",
-                "description": "Controller Statistics:\n\n• Devices: {devices_count}\n• Commands: {commands_count}\n\nUse Developer Tools → Services for programmatic device and command management."
             }
         },
         "error": {
@@ -412,8 +404,7 @@
                 "add_device": "Add virtual device", 
                 "add_command": "Add command to device",
                 "remove_device": "Remove virtual device",
-                "remove_command": "Remove device command",
-                "manage": "Manage existing data"
+                "remove_command": "Remove device command"
             }
         },
         "device_type": {
@@ -430,8 +421,7 @@
                 "add_device": "Add virtual device",
                 "add_command": "Add command to device",
                 "remove_device": "Remove virtual device",
-                "remove_command": "Remove device command",
-                "manage": "View controller data"
+                "remove_command": "Remove device command"
             }
         }
     }

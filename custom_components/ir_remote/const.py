@@ -31,7 +31,6 @@ ACTION_ADD_DEVICE = "add_device"
 ACTION_ADD_COMMAND = "add_command"
 ACTION_REMOVE_DEVICE = "remove_device"
 ACTION_REMOVE_COMMAND = "remove_command"
-ACTION_MANAGE = "manage"
 
 # Config Flow steps
 STEP_INIT = "init"
@@ -48,7 +47,6 @@ STEP_SELECT_CONTROLLER_FOR_REMOVE_COMMAND = "select_controller_for_remove_comman
 STEP_SELECT_DEVICE_FOR_REMOVE_COMMAND = "select_device_for_remove_command"
 STEP_SELECT_COMMAND_FOR_REMOVE = "select_command_for_remove"
 STEP_CONFIRM_REMOVE_COMMAND = "confirm_remove_command"
-STEP_MANAGE = "manage"
 
 # Device types
 DEVICE_TYPE_TV = "tv"
