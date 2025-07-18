@@ -33,123 +33,14 @@
                 "data": {
                     "controller_id": "ИК-пульт"
                 }
-            },
-            "add_device": {
-                "title": "Добавить устройство",
-                "description": "Добавьте новое виртуальное устройство к пульту \"{controller_name}\".",
-                "data": {
-                    "device_name": "Название устройства"
-                },
-                "data_description": {
-                    "device_name": "Например: Телевизор, Аудиосистема, Кондиционер"
-                }
-            },
-            "select_device_type": {
-                "title": "Выбор типа устройства",
-                "description": "Выберите тип устройства \"{device_name}\" для правильного отображения в умных домах.",
-                "data": {
-                    "device_type": "Тип устройства"
-                }
-            },
-            "select_controller_for_command": {
-                "title": "Выбор ИК-пульта",
-                "description": "Выберите ИК-пульт для добавления команды.",
-                "data": {
-                    "controller_id": "ИК-пульт"
-                }
-            },
-            "select_device_for_command": {
-                "title": "Выбор устройства",
-                "description": "Выберите устройство для добавления команды.",
-                "data": {
-                    "device_id": "Устройство"
-                }
-            },
-            "add_command": {
-                "title": "Добавить команду",
-                "description": "Добавьте новую команду к устройству \"{device_name}\" (пульт: \"{controller_name}\").",
-                "data": {
-                    "command_name": "Название команды"
-                },
-                "data_description": {
-                    "command_name": "Например: Включить, Выключить, Громче, Тише"
-                }
-            },
-            "learn_command": {
-                "title": "Обучение команде",
-                "description": "Сейчас начнётся обучение команде \"{command_name}\" для устройства \"{device_name}\".\n\n1. Убедитесь, что ИК-пульт \"{controller_name}\" направлен на обучаемое устройство\n2. Нажмите \"Готов к обучению\"\n3. Сразу нажмите нужную кнопку на оригинальном пульте\n\nКоманда будет автоматически сохранена после получения ИК-сигнала.",
-                "data": {
-                    "ready": "Готов к обучению"
-                }
-            },
-            "select_controller_for_remove_device": {
-                "title": "Выбор ИК-пульта",
-                "description": "Выберите ИК-пульт для удаления устройства.",
-                "data": {
-                    "controller_id": "ИК-пульт"
-                }
-            },
-            "select_device_for_remove": {
-                "title": "Выбор устройства для удаления",
-                "description": "Выберите устройство для удаления из пульта \"{controller_name}\".",
-                "data": {
-                    "device_id": "Устройство"
-                }
-            },
-            "confirm_remove_device": {
-                "title": "⚠️ Подтверждение удаления устройства",
-                "description": "Вы собираетесь удалить устройство \"{device_name}\" из пульта \"{controller_name}\".\n\n⚠️ ВНИМАНИЕ: Будут удалены ВСЕ команды этого устройства ({commands_count} команд).\n\nЭто действие нельзя отменить!",
-                "data": {
-                    "confirm": "Да, удалить устройство"
-                }
-            },
-            "select_controller_for_remove_command": {
-                "title": "Выбор ИК-пульта",
-                "description": "Выберите ИК-пульт для удаления команды.",
-                "data": {
-                    "controller_id": "ИК-пульт"
-                }
-            },
-            "select_device_for_remove_command": {
-                "title": "Выбор устройства",
-                "description": "Выберите устройство для удаления команды из пульта \"{controller_name}\".",
-                "data": {
-                    "device_id": "Устройство"
-                }
-            },
-            "select_command_for_remove": {
-                "title": "Выбор команды для удаления",
-                "description": "Выберите команду для удаления из устройства \"{device_name}\".",
-                "data": {
-                    "command_id": "Команда"
-                }
-            },
-            "confirm_remove_command": {
-                "title": "⚠️ Подтверждение удаления команды",
-                "description": "Вы собираетесь удалить команду \"{command_name}\" из устройства \"{device_name}\" (пульт: \"{controller_name}\").\n\nЭто действие нельзя отменить!",
-                "data": {
-                    "confirm": "Да, удалить команду"
-                }
             }
         },
         "error": {
             "device_not_found": "Выбранное устройство не найдено в ZHA",
-            "zha_not_found": "ZHA интеграция не найдена или zha_toolkit недоступен",
-            "device_exists": "Устройство с таким именем уже существует",
-            "command_exists": "Команда с таким именем уже существует",
-            "invalid_name": "Недопустимое имя. Используйте только буквы, цифры, пробелы, дефисы и подчёркивания",
-            "learn_timeout": "Время ожидания ИК-сигнала истекло",
-            "learn_failed": "Не удалось получить ИК-сигнал",
-            "add_device_failed": "Не удалось добавить устройство",
-            "remove_failed": "Не удалось удалить. Попробуйте еще раз.",
-            "no_devices": "У этого пульта нет устройств. Сначала добавьте устройство."
+            "zha_not_found": "ZHA интеграция не найдена или zha_toolkit недоступен"
         },
         "abort": {
-            "single_instance_allowed": "Разрешена только одна копия интеграции",
-            "command_learning_started": "✅ Обучение команды {command_name} начато",
-            "command_removed": "✅ Команда {command_name} успешно удалена",
-            "device_added": "✅ Устройство {device_name} успешно добавлено",
-            "device_removed": "✅ Устройство {device_name} успешно удалено"
+            "single_instance_allowed": "Разрешена только одна копия интеграции"
         }
     },
     "options": {
