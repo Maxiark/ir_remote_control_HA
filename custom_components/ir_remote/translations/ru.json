@@ -33,14 +33,79 @@
                 "data": {
                     "controller_id": "ИК-пульт"
                 }
+            },
+            "copy_select_type": {
+                "title": "Выбор типа копирования",
+                "description": "Выберите, что вы хотите скопировать.",
+                "data": {
+                    "copy_type": "Что копировать"
+                }
+            },
+            "copy_select_source_controller": {
+                "title": "Выбор пульта-источника",
+                "description": "Выберите пульт, с которого будете копировать {copy_type}.",
+                "data": {
+                    "source_controller_id": "Пульт-источник"
+                }
+            },
+            "copy_select_source_device": {
+                "title": "Выбор устройства-источника",
+                "description": "Выберите устройство для копирования из пульта \"{controller_name}\".",
+                "data": {
+                    "source_device_id": "Устройство-источник"
+                }
+            },
+            "copy_select_source_commands": {
+                "title": "Выбор команд для копирования",
+                "description": "Выберите команды для копирования из устройства \"{device_name}\".",
+                "data": {
+                    "source_commands": "Команды для копирования"
+                }
+            },
+            "copy_select_target_controller": {
+                "title": "Выбор пульта-получателя",
+                "description": "Выберите пульт, в который будете копировать {copy_type}.",
+                "data": {
+                    "target_controller_id": "Пульт-получатель"
+                }
+            },
+            "copy_select_target_device": {
+                "title": "Выбор устройства-получателя",
+                "description": "Выберите устройство в пульте \"{controller_name}\", в которое будут скопированы команды.",
+                "data": {
+                    "target_device_id": "Устройство-получатель"
+                }
+            },
+            "copy_device_name": {
+                "title": "Название нового устройства",
+                "description": "Введите название для копии устройства \"{source_device_name}\" в пульте \"{target_controller_name}\".",
+                "data": {
+                    "new_device_name": "Название нового устройства"
+                },
+                "data_description": {
+                    "new_device_name": "Название должно быть уникальным в пределах пульта"
+                }
+            },
+            "copy_confirm": {
+                "title": "⚠️ Подтверждение копирования",
+                "description": "Вы собираетесь скопировать:\n\n• Что: {copy_type}\n• Откуда: {source_device_name} ({source_controller_name})\n• Куда: {target_controller_name}\n\nПодтвердите операцию копирования.",
+                "data": {
+                    "confirm": "Да, выполнить копирование"
+                }
             }
         },
         "error": {
             "device_not_found": "Выбранное устройство не найдено в ZHA",
-            "zha_not_found": "ZHA интеграция не найдена или zha_toolkit недоступен"
+            "zha_not_found": "ZHA интеграция не найдена или zha_toolkit недоступен",
+            "copy_failed": "Не удалось выполнить копирование",
+            "no_source_data": "Исходные данные не найдены",
+            "same_target": "Нельзя копировать в то же место",
+            "no_commands_selected": "Выберите хотя бы одну команду для копирования"
         },
         "abort": {
-            "single_instance_allowed": "Разрешена только одна копия интеграции"
+            "single_instance_allowed": "Разрешена только одна копия интеграции",
+            "device_copied": "✅ Устройство {device_name} успешно скопировано",
+            "commands_copied": "✅ Успешно скопировано {command_count} команд"
         }
     },
     "options": {
@@ -294,6 +359,7 @@
                 "add_controller": "Добавить новый ИК-пульт",
                 "add_device": "Добавить виртуальное устройство", 
                 "add_command": "Добавить команду к устройству",
+                "copy": "Копировать устройства/команды",
                 "remove_device": "Удалить виртуальное устройство",
                 "remove_command": "Удалить команду устройства"
             }
@@ -313,6 +379,12 @@
                 "add_command": "Добавить команду к устройству",
                 "remove_device": "Удалить виртуальное устройство",
                 "remove_command": "Удалить команду устройства"
+            }
+        },
+        "copy_type": {
+            "options": {
+                "device": "Копировать всё устройство",
+                "commands": "Копировать команды"
             }
         }
     }

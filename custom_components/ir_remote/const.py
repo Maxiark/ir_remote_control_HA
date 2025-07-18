@@ -25,10 +25,20 @@ CONF_DEVICE_NAME = "device_name"
 CONF_DEVICE_TYPE = "device_type"
 CONF_COMMAND_NAME = "command_name"
 
+# Copy configuration keys
+CONF_COPY_TYPE = "copy_type"
+CONF_SOURCE_CONTROLLER_ID = "source_controller_id"
+CONF_SOURCE_DEVICE_ID = "source_device_id" 
+CONF_SOURCE_COMMANDS = "source_commands"
+CONF_TARGET_CONTROLLER_ID = "target_controller_id"
+CONF_TARGET_DEVICE_ID = "target_device_id"
+CONF_NEW_DEVICE_NAME = "new_device_name"
+
 # Config Flow actions
 ACTION_ADD_CONTROLLER = "add_controller"
 ACTION_ADD_DEVICE = "add_device"
 ACTION_ADD_COMMAND = "add_command"
+ACTION_COPY = "copy"
 ACTION_REMOVE_DEVICE = "remove_device"
 ACTION_REMOVE_COMMAND = "remove_command"
 
@@ -40,6 +50,14 @@ STEP_ADD_DEVICE = "add_device"
 STEP_SELECT_DEVICE_TYPE = "select_device_type"
 STEP_ADD_COMMAND = "add_command"
 STEP_LEARN_COMMAND = "learn_command"
+STEP_COPY_SELECT_TYPE = "copy_select_type"
+STEP_COPY_SELECT_SOURCE_CONTROLLER = "copy_select_source_controller" 
+STEP_COPY_SELECT_SOURCE_DEVICE = "copy_select_source_device"
+STEP_COPY_SELECT_SOURCE_COMMANDS = "copy_select_source_commands"
+STEP_COPY_SELECT_TARGET_CONTROLLER = "copy_select_target_controller"
+STEP_COPY_SELECT_TARGET_DEVICE = "copy_select_target_device"
+STEP_COPY_DEVICE_NAME = "copy_device_name"
+STEP_COPY_CONFIRM = "copy_confirm"
 STEP_SELECT_CONTROLLER_FOR_REMOVE_DEVICE = "select_controller_for_remove_device"
 STEP_SELECT_DEVICE_FOR_REMOVE = "select_device_for_remove"
 STEP_CONFIRM_REMOVE_DEVICE = "confirm_remove_device"
@@ -47,6 +65,14 @@ STEP_SELECT_CONTROLLER_FOR_REMOVE_COMMAND = "select_controller_for_remove_comman
 STEP_SELECT_DEVICE_FOR_REMOVE_COMMAND = "select_device_for_remove_command"
 STEP_SELECT_COMMAND_FOR_REMOVE = "select_command_for_remove"
 STEP_CONFIRM_REMOVE_COMMAND = "confirm_remove_command"
+
+# Copy types
+COPY_TYPE_DEVICE = "device"
+COPY_TYPE_COMMANDS = "commands"
+COPY_TYPES = {
+    COPY_TYPE_DEVICE: "Копировать всё устройство",
+    COPY_TYPE_COMMANDS: "Копировать команды",
+}
 
 # Device types
 DEVICE_TYPE_TV = "tv"
@@ -153,6 +179,9 @@ ERROR_INVALID_NAME = "invalid_name"
 ERROR_LEARN_TIMEOUT = "learn_timeout"
 ERROR_LEARN_FAILED = "learn_failed"
 ERROR_REMOVE_FAILED = "remove_failed"
+ERROR_COPY_FAILED = "copy_failed"
+ERROR_NO_SOURCE_DATA = "no_source_data"
+ERROR_SAME_TARGET = "same_target"
 
 # Service names
 SERVICE_LEARN_COMMAND = "learn_command"

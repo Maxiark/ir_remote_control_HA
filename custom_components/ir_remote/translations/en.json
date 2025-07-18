@@ -26,14 +26,79 @@
                     "endpoint_id": "Usually 1, change only if you know what you're doing",
                     "cluster_id": "Usually 57348, change only if you know what you're doing"
                 }
+            },
+            "copy_select_type": {
+                "title": "Select Copy Type",
+                "description": "Choose what you want to copy.",
+                "data": {
+                    "copy_type": "What to copy"
+                }
+            },
+            "copy_select_source_controller": {
+                "title": "Select Source Controller",
+                "description": "Choose the controller to copy {copy_type} from.",
+                "data": {
+                    "source_controller_id": "Source Controller"
+                }
+            },
+            "copy_select_source_device": {
+                "title": "Select Source Device",
+                "description": "Choose device to copy from controller \"{controller_name}\".",
+                "data": {
+                    "source_device_id": "Source Device"
+                }
+            },
+            "copy_select_source_commands": {
+                "title": "Select Commands to Copy",
+                "description": "Choose commands to copy from device \"{device_name}\".",
+                "data": {
+                    "source_commands": "Commands to copy"
+                }
+            },
+            "copy_select_target_controller": {
+                "title": "Select Target Controller",
+                "description": "Choose the controller to copy {copy_type} to.",
+                "data": {
+                    "target_controller_id": "Target Controller"
+                }
+            },
+            "copy_select_target_device": {
+                "title": "Select Target Device",
+                "description": "Choose device in controller \"{controller_name}\" to copy commands to.",
+                "data": {
+                    "target_device_id": "Target Device"
+                }
+            },
+            "copy_device_name": {
+                "title": "New Device Name",
+                "description": "Enter name for the copy of device \"{source_device_name}\" in controller \"{target_controller_name}\".",
+                "data": {
+                    "new_device_name": "New device name"
+                },
+                "data_description": {
+                    "new_device_name": "Name must be unique within the controller"
+                }
+            },
+            "copy_confirm": {
+                "title": "⚠️ Confirm Copy Operation",
+                "description": "You are about to copy:\n\n• What: {copy_type}\n• From: {source_device_name} ({source_controller_name})\n• To: {target_controller_name}\n\nConfirm the copy operation.",
+                "data": {
+                    "confirm": "Yes, perform copy"
+                }
             }
         },
         "error": {
             "device_not_found": "Selected device not found in ZHA",
-            "zha_not_found": "ZHA integration not found or zha_toolkit unavailable"
+            "zha_not_found": "ZHA integration not found or zha_toolkit unavailable",
+            "copy_failed": "Failed to perform copy operation",
+            "no_source_data": "Source data not found",
+            "same_target": "Cannot copy to the same location",
+            "no_commands_selected": "Select at least one command to copy"
         },
         "abort": {
-            "single_instance_allowed": "Only one instance of the integration is allowed"
+            "single_instance_allowed": "Only one instance of the integration is allowed",
+            "device_copied": "✅ Device {device_name} successfully copied",
+            "commands_copied": "✅ Successfully copied {command_count} commands"
         }
     },
     "options": {
@@ -304,8 +369,15 @@
             "options": {
                 "add_device": "Add virtual device",
                 "add_command": "Add command to device",
+                "copy": "Copy devices/commands",
                 "remove_device": "Remove virtual device",
                 "remove_command": "Remove device command"
+            }
+        },
+        "copy_type": {
+            "options": {
+                "device": "Copy entire device",
+                "commands": "Copy commands"
             }
         }
     }
