@@ -156,6 +156,100 @@
             "device_removed": "✅ Device {device_name} successfully removed"
         }
     },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Controller Settings: {controller_name}",
+                "description": "Choose an action to manage devices and commands for this controller.\n\nController Statistics:\n• Devices: {devices_count}\n• Commands: {commands_count}",
+                "data": {
+                    "action": "Action"
+                },
+                "data_description": {
+                    "action": "Select what you want to do"
+                }
+            },
+            "add_device": {
+                "title": "Add Device",
+                "description": "Add a new virtual device to controller \"{controller_name}\".",
+                "data": {
+                    "device_name": "Device Name"
+                },
+                "data_description": {
+                    "device_name": "For example: TV, Audio System, Air Conditioner"
+                }
+            },
+            "select_device_for_command": {
+                "title": "Select Device",
+                "description": "Choose device to add command to.",
+                "data": {
+                    "device_id": "Device"
+                }
+            },
+            "add_command": {
+                "title": "Add Command",
+                "description": "Add a new command to device \"{device_name}\" (controller: \"{controller_name}\").",
+                "data": {
+                    "command_name": "Command Name"
+                },
+                "data_description": {
+                    "command_name": "For example: Power On, Power Off, Volume Up, Volume Down"
+                }
+            },
+            "learn_command": {
+                "title": "Learn Command",
+                "description": "Now learning command \"{command_name}\" for device \"{device_name}\".\n\n1. Make sure IR controller \"{controller_name}\" is pointed at the target device\n2. Click \"Submit\"\n3. Immediately press the desired button on the original remote\n\nThe command will be automatically saved after receiving the IR signal."
+            },
+            "select_device_for_remove": {
+                "title": "Select Device to Remove",
+                "description": "Choose device to remove from controller.",
+                "data": {
+                    "device_id": "Device"
+                }
+            },
+            "confirm_remove_device": {
+                "title": "⚠️ Confirm Device Removal",
+                "description": "You are about to remove device \"{device_name}\" from controller \"{controller_name}\".\n\n⚠️ WARNING: ALL commands for this device will be deleted ({commands_count} commands).\n\nThis action cannot be undone!",
+                "data": {
+                    "confirm": "Yes, remove device"
+                }
+            },
+            "select_device_for_remove_command": {
+                "title": "Select Device",
+                "description": "Choose device to remove command from.",
+                "data": {
+                    "device_id": "Device"
+                }
+            },
+            "select_command_for_remove": {
+                "title": "Select Command to Remove",
+                "description": "Choose command to remove from device \"{device_name}\".",
+                "data": {
+                    "command_id": "Command"
+                }
+            },
+            "confirm_remove_command": {
+                "title": "⚠️ Confirm Command Removal",
+                "description": "You are about to remove command \"{command_name}\" from device \"{device_name}\" (controller: \"{controller_name}\").\n\nThis action cannot be undone!",
+                "data": {
+                    "confirm": "Yes, remove command"
+                }
+            },
+            "manage": {
+                "title": "Controller Data: {controller_name}",
+                "description": "Controller Statistics:\n\n• Devices: {devices_count}\n• Commands: {commands_count}\n\nUse Developer Tools → Services for programmatic device and command management."
+            }
+        },
+        "error": {
+            "storage_error": "Storage data loading error",
+            "controller_not_found": "Controller not found",
+            "device_exists": "Device with this name already exists",
+            "command_exists": "Command with this name already exists",
+            "invalid_name": "Invalid name. Use only letters, numbers, spaces, hyphens and underscores",
+            "add_device_failed": "Failed to add device",
+            "remove_failed": "Failed to remove. Please try again.",
+            "no_devices": "This controller has no devices. Add a device first."
+        }
+    },
     "entity": {
         "button": {
             "add_command": {
@@ -330,106 +424,7 @@
                 "ac": "Air Conditioner", 
                 "universal": "Universal Device"
             }
-        }
-    }
-}
-
-{
-    "options": {
-        "step": {
-            "init": {
-                "title": "Controller Settings: {controller_name}",
-                "description": "Choose an action to manage devices and commands for this controller.\n\nController Statistics:\n• Devices: {devices_count}\n• Commands: {commands_count}",
-                "data": {
-                    "action": "Action"
-                },
-                "data_description": {
-                    "action": "Select what you want to do"
-                }
-            },
-            "add_device": {
-                "title": "Add Device",
-                "description": "Add a new virtual device to controller \"{controller_name}\".",
-                "data": {
-                    "device_name": "Device Name"
-                },
-                "data_description": {
-                    "device_name": "For example: TV, Audio System, Air Conditioner"
-                }
-            },
-            "select_device_for_command": {
-                "title": "Select Device",
-                "description": "Choose device to add command to.",
-                "data": {
-                    "device_id": "Device"
-                }
-            },
-            "add_command": {
-                "title": "Add Command",
-                "description": "Add a new command to device \"{device_name}\" (controller: \"{controller_name}\").",
-                "data": {
-                    "command_name": "Command Name"
-                },
-                "data_description": {
-                    "command_name": "For example: Power On, Power Off, Volume Up, Volume Down"
-                }
-            },
-            "learn_command": {
-                "title": "Learn Command",
-                "description": "Now learning command \"{command_name}\" for device \"{device_name}\".\n\n1. Make sure IR controller \"{controller_name}\" is pointed at the target device\n2. Click \"Submit\"\n3. Immediately press the desired button on the original remote\n\nThe command will be automatically saved after receiving the IR signal."
-            },
-            "select_device_for_remove": {
-                "title": "Select Device to Remove",
-                "description": "Choose device to remove from controller.",
-                "data": {
-                    "device_id": "Device"
-                }
-            },
-            "confirm_remove_device": {
-                "title": "⚠️ Confirm Device Removal",
-                "description": "You are about to remove device \"{device_name}\" from controller \"{controller_name}\".\n\n⚠️ WARNING: ALL commands for this device will be deleted ({commands_count} commands).\n\nThis action cannot be undone!",
-                "data": {
-                    "confirm": "Yes, remove device"
-                }
-            },
-            "select_device_for_remove_command": {
-                "title": "Select Device",
-                "description": "Choose device to remove command from.",
-                "data": {
-                    "device_id": "Device"
-                }
-            },
-            "select_command_for_remove": {
-                "title": "Select Command to Remove",
-                "description": "Choose command to remove from device \"{device_name}\".",
-                "data": {
-                    "command_id": "Command"
-                }
-            },
-            "confirm_remove_command": {
-                "title": "⚠️ Confirm Command Removal",
-                "description": "You are about to remove command \"{command_name}\" from device \"{device_name}\" (controller: \"{controller_name}\").\n\nThis action cannot be undone!",
-                "data": {
-                    "confirm": "Yes, remove command"
-                }
-            },
-            "manage": {
-                "title": "Controller Data: {controller_name}",
-                "description": "Controller Statistics:\n\n• Devices: {devices_count}\n• Commands: {commands_count}\n\nUse Developer Tools → Services for programmatic device and command management."
-            }
         },
-        "error": {
-            "storage_error": "Storage data loading error",
-            "controller_not_found": "Controller not found",
-            "device_exists": "Device with this name already exists",
-            "command_exists": "Command with this name already exists",
-            "invalid_name": "Invalid name. Use only letters, numbers, spaces, hyphens and underscores",
-            "add_device_failed": "Failed to add device",
-            "remove_failed": "Failed to remove. Please try again.",
-            "no_devices": "This controller has no devices. Add a device first."
-        }
-    },
-    "selector": {
         "options_action": {
             "options": {
                 "add_device": "Add virtual device",
