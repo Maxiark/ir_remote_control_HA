@@ -243,7 +243,7 @@ class IRClimate(ClimateEntity):
             elif hvac_mode == HVACMode.FAN_ONLY:
                 self._current_hvac_action = HVACAction.FAN
             elif hvac_mode == HVACMode.DRY:
-                self._current_hvac_action = HVACAction.DRY
+                self._current_hvac_action = HVACAction.DRYING
             else:
                 self._current_hvac_action = HVACAction.IDLE
             
