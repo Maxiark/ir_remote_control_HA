@@ -119,3 +119,20 @@ get_data:
       required: false
       selector:
         text:
+
+debug_device:
+  name: Debug устройства
+  description: Показывает подробную информацию об устройстве и его командах
+  fields:
+    controller_id:
+      name: ID пульта
+      description: Идентификатор ИК-пульта (config entry ID)
+      required: true
+      selector:
+        text:
+    device:
+      name: Устройство
+      description: ID устройства
+      required: true
+      selector:
+        text:

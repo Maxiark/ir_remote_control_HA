@@ -149,6 +149,8 @@ class IRClimate(ClimateEntity):
         self._attr_fan_modes = ["auto", "low", "medium", "high"]
         
         # Analyze available commands and set temperature range
+        _LOGGER.info("Initializing climate entity: controller_id=%s, device_id=%s, device_name=%s", 
+                    controller_id, device_id, device_name)
         self._update_temperature_range()
         
         # Set supported features
@@ -251,22 +253,66 @@ class IRClimate(ClimateEntity):
         commands = self._storage.get_commands(self._controller_id, self._device_id)
         temp_commands = []
         
-        # Find all temperature commands (temp_18, temp_19, etc.)
+        _LOGGER.debug("Analyzing commands for temperature range:")
+        
+        # Find all temperature commands with flexible patterns
         for command in commands:
             command_id = command["id"].lower()
-            if command_id.startswith("temp_"):
+            _LOGGER.debug("  Checking command: %s", command_id)
+            
+            # Extract temperature from various patterns
+            temp_value = None
+            
+            # Pattern 1: temp_XX or temperature_XX
+            if command_id.startswith("temp_") or command_id.startswith("temperature_"):
                 try:
                     temp_value = int(command_id.split("_")[1])
-                    temp_commands.append(temp_value)
                 except (ValueError, IndexError):
                     continue
+            
+            # Pattern 2: tempXX or temperatureXX
+            elif command_id.startswith("temp") and command_id[4:].isdigit():
+                try:
+                    temp_value = int(command_id[4:])
+                except ValueError:
+                    continue
+            elif command_id.startswith("temperature") and command_id[11:].isdigit():
+                try:
+                    temp_value = int(command_id[11:])
+                except ValueError:
+                    continue
+            
+            # Pattern 3: XXc or XX°c (like 24c, 24°c)
+            elif command_id.endswith("c") or command_id.endswith("°c"):
+                try:
+                    temp_str = command_id.replace("°c", "").replace("c", "")
+                    if temp_str.isdigit():
+                        temp_value = int(temp_str)
+                except ValueError:
+                    continue
+            
+            # Pattern 4: Pure numbers that might be temperature
+            elif command_id.isdigit():
+                try:
+                    temp_value = int(command_id)
+                    # Only consider reasonable temperature values
+                    if 10 <= temp_value <= 40:
+                        pass  # Keep this temperature
+                    else:
+                        temp_value = None
+                except ValueError:
+                    continue
+            
+            if temp_value is not None and 10 <= temp_value <= 40:
+                temp_commands.append(temp_value)
+                _LOGGER.debug("    Found temperature: %s°C", temp_value)
         
         if temp_commands:
             # Set range based on available commands
             self._attr_min_temp = min(temp_commands)
             self._attr_max_temp = max(temp_commands)
-            _LOGGER.info("Found temperature commands for %s: %s-%s°C", 
-                        self._device_name, self._attr_min_temp, self._attr_max_temp)
+            _LOGGER.info("Found temperature commands for %s: %s°C to %s°C (commands: %s)", 
+                        self._device_name, self._attr_min_temp, self._attr_max_temp, sorted(temp_commands))
         else:
             # Default range if no temp commands found
             self._attr_min_temp = 16
@@ -275,39 +321,93 @@ class IRClimate(ClimateEntity):
                         self._device_name, self._attr_min_temp, self._attr_max_temp)
     
     def _find_temperature_command(self, temperature: int) -> Optional[str]:
-        """Find exact temperature command."""
+        """Find exact temperature command with flexible matching."""
         commands = self._storage.get_commands(self._controller_id, self._device_id)
         
-        # Look for exact temperature command
-        target_command = f"temp_{temperature}"
+        _LOGGER.debug("Looking for temperature %s°C. Available commands:", temperature)
         for command in commands:
-            if command["id"].lower() == target_command:
+            _LOGGER.debug("  - %s (%s)", command["id"], command["name"])
+        
+        # Try different naming patterns for temperature commands
+        possible_names = [
+            f"temp_{temperature}",           # temp_24
+            f"temperature_{temperature}",    # temperature_24
+            f"temp{temperature}",            # temp24
+            f"temperature{temperature}",     # temperature24
+            f"{temperature}c",               # 24c
+            f"{temperature}°c",              # 24°c
+            f"{temperature}",                # 24
+        ]
+        
+        _LOGGER.debug("Searching for temperature commands: %s", possible_names)
+        
+        for command in commands:
+            command_id_lower = command["id"].lower()
+            
+            # Check exact matches
+            for possible_name in possible_names:
+                if command_id_lower == possible_name.lower():
+                    _LOGGER.info("Found temperature command: %s for %s°C", command["id"], temperature)
+                    return command["id"]
+            
+            # Check if command contains temperature value
+            if str(temperature) in command_id_lower and any(keyword in command_id_lower for keyword in ["temp", "temperature"]):
+                _LOGGER.info("Found temperature command by pattern: %s for %s°C", command["id"], temperature)
                 return command["id"]
         
-        _LOGGER.warning("No command found for temperature %s°C", temperature)
+        _LOGGER.warning("No command found for temperature %s°C. Searched patterns: %s", temperature, possible_names)
         return None
     
     async def async_set_temperature(self, **kwargs) -> None:
         """Set new target temperature."""
         temperature = kwargs.get("temperature")
         if temperature is None:
+            _LOGGER.warning("No temperature provided in kwargs: %s", kwargs)
             return
         
         # Round to nearest integer
         temperature = round(temperature)
         
         _LOGGER.info("Setting temperature to %s°C for %s", temperature, self._device_name)
+        _LOGGER.info("Climate entity info: controller_id=%s, device_id=%s", self._controller_id, self._device_id)
+        
+        # DEBUG: Check if storage is accessible
+        if not self._storage:
+            _LOGGER.error("Storage is None!")
+            return
+        
+        # DEBUG: Get all commands and show them
+        try:
+            commands = self._storage.get_commands(self._controller_id, self._device_id)
+            _LOGGER.info("Retrieved %d commands from storage:", len(commands))
+            for i, cmd in enumerate(commands):
+                _LOGGER.info("  Command %d: id='%s', name='%s'", i+1, cmd.get("id", "NO_ID"), cmd.get("name", "NO_NAME"))
+        except Exception as e:
+            _LOGGER.error("Failed to get commands from storage: %s", e)
+            return
+        
+        # Check if temperature is in allowed range
+        if temperature < self._attr_min_temp or temperature > self._attr_max_temp:
+            _LOGGER.error("Temperature %s°C is outside allowed range %s-%s°C", 
+                         temperature, self._attr_min_temp, self._attr_max_temp)
+            return
         
         # Find exact temperature command
+        _LOGGER.info("Looking for temperature command for %s°C...", temperature)
         temp_command = self._find_temperature_command(temperature)
         
         if temp_command:
-            await self._send_command(temp_command)
-            self._target_temperature = temperature
-            self.async_write_ha_state()
-            _LOGGER.info("Set target temperature to %s°C with command %s", temperature, temp_command)
+            try:
+                _LOGGER.info("Found temperature command: %s, sending...", temp_command)
+                await self._send_command(temp_command)
+                self._target_temperature = temperature
+                self.async_write_ha_state()
+                _LOGGER.info("Successfully set target temperature to %s°C with command %s", temperature, temp_command)
+            except Exception as e:
+                _LOGGER.error("Failed to send temperature command %s: %s", temp_command, e)
         else:
             _LOGGER.error("No temperature command found for %s°C", temperature)
+    
     
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set new target fan mode."""
