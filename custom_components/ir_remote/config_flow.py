@@ -719,7 +719,11 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # Clean up entities and device
                     await self._cleanup_device_entities(controller_id, device_id, commands)
                     await self._cleanup_virtual_device(controller_id, device_id)
-                    
+                    # Reload integration to update entities  
+                    self.hass.async_create_task(
+                        self._reload_entry_after_delay(controller_id)
+                    )
+
                     return self.async_abort(
                         reason="device_removed",
                         description_placeholders={"device_name": device_name}
@@ -873,6 +877,10 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if success:
                     # Clean up entity
                     await self._cleanup_command_entity(controller_id, device_id, command_id)
+                    # Reload integration to update entities
+                    self.hass.async_create_task(
+                        self._reload_entry_after_delay(controller_id)
+                    )
                     
                     return self.async_abort(
                         reason="command_removed",
@@ -1266,7 +1274,11 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
                     # Clean up entities and device
                     await self._cleanup_device_entities(controller_id, device_id, commands)
                     await self._cleanup_virtual_device(controller_id, device_id)
-                    
+                    # Reload integration to update entities  
+                    self.hass.async_create_task(
+                        self._reload_entry_after_delay(controller_id)
+                    )
+
                     return self.async_create_entry(
                         title="",
                         data={}
@@ -1366,7 +1378,11 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
                 if success:
                     # Clean up entity
                     await self._cleanup_command_entity(controller_id, device_id, command_id)
-                    
+                    # Reload integration to update entities
+                    self.hass.async_create_task(
+                        self._reload_entry_after_delay(controller_id)
+                    )
+
                     return self.async_create_entry(
                         title="",
                         data={}

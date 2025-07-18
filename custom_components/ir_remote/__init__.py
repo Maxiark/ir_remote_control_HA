@@ -471,7 +471,11 @@ async def _register_services(hass: HomeAssistant) -> None:
 
             # Clean up device from Device Registry
             await _cleanup_virtual_device(hass, controller_id, device_id)
-
+            # Reload integration to update entities
+            config_entry = hass.config_entries.async_get_entry(controller_id) 
+            if config_entry:
+                await hass.config_entries.async_reload(controller_id)
+                
         else:
             _LOGGER.error("Failed to remove device: %s", device_id)
             raise HomeAssistantError(f"Failed to remove device {device_id}")
@@ -499,6 +503,10 @@ async def _register_services(hass: HomeAssistant) -> None:
 
             # Clean up entity from Entity Registry
             await _cleanup_command_entity(hass, controller_id, device_id, command_id)
+            # Reload integration to update entities
+            config_entry = hass.config_entries.async_get_entry(controller_id)
+            if config_entry:
+                await hass.config_entries.async_reload(controller_id)
 
         else:
             _LOGGER.error("Failed to remove command: %s", command_id)
