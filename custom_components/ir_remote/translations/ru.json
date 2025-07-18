@@ -27,11 +27,90 @@
                     "cluster_id": "Обычно 57348, изменяйте только если знаете что делаете"
                 }
             },
-            "select_controller": {
-                "title": "Выбор ИК-пульта",
-                "description": "Выберите ИК-пульт для добавления устройства.",
+            "copy_select_type": {
+                "title": "Выбор типа копирования",
+                "description": "Выберите, что вы хотите скопировать.",
                 "data": {
-                    "controller_id": "ИК-пульт"
+                    "copy_type": "Что копировать"
+                }
+            },
+            "copy_select_source_controller": {
+                "title": "Выбор пульта-источника",
+                "description": "Выберите пульт, с которого будете копировать {copy_type}.",
+                "data": {
+                    "source_controller_id": "Пульт-источник"
+                }
+            },
+            "copy_select_source_device": {
+                "title": "Выбор устройства-источника",
+                "description": "Выберите устройство для копирования из пульта \"{controller_name}\".",
+                "data": {
+                    "source_device_id": "Устройство-источник"
+                }
+            },
+            "copy_select_source_commands": {
+                "title": "Выбор команд для копирования",
+                "description": "Выберите команды для копирования из устройства \"{device_name}\".",
+                "data": {
+                    "source_commands": "Команды для копирования"
+                }
+            },
+            "copy_select_target_controller": {
+                "title": "Выбор пульта-получателя",
+                "description": "Выберите пульт, в который будете копировать {copy_type}.",
+                "data": {
+                    "target_controller_id": "Пульт-получатель"
+                }
+            },
+            "copy_select_target_device": {
+                "title": "Выбор устройства-получателя",
+                "description": "Выберите устройство в пульте \"{controller_name}\", в которое будут скопированы команды.",
+                "data": {
+                    "target_device_id": "Устройство-получатель"
+                }
+            },
+            "copy_device_name": {
+                "title": "Название нового устройства",
+                "description": "Введите название для копии устройства \"{source_device_name}\" в пульте \"{target_controller_name}\".",
+                "data": {
+                    "new_device_name": "Название нового устройства"
+                },
+                "data_description": {
+                    "new_device_name": "При конфликте имен автоматически добавится суффикс (_2)"
+                }
+            },
+            "copy_confirm": {
+                "title": "⚠️ Подтверждение копирования",
+                "description": "Вы собираетесь скопировать:\n\n• Что: {copy_type}\n• Откуда: {source_device_name} ({source_controller_name})\n• Куда: {target_controller_name}\n\nПодтвердите операцию копирования.",
+                "data": {
+                    "confirm": "Да, выполнить копирование"
+                }
+            }
+        },
+        "error": {
+            "device_not_found": "Выбранное устройство не найдено в ZHA",
+            "zha_not_found": "ZHA интеграция не найдена или zha_toolkit недоступен",
+            "copy_failed": "Не удалось выполнить копирование",
+            "no_source_data": "Исходные данные не найдены",
+            "same_target": "Нельзя копировать в то же место",
+            "no_commands_selected": "Выберите хотя бы одну команду для копирования"
+        },
+        "abort": {
+            "single_instance_allowed": "Разрешена только одна копия интеграции",
+            "device_copied": "✅ Устройство {device_name} успешно скопировано",
+            "commands_copied": "✅ Успешно скопировано {command_count} команд"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Настройки пульта: {controller_name}",
+                "description": "Выберите действие для управления устройствами и командами этого пульта.\n\nСтатистика пульта:\n• Устройств: {devices_count}\n• Команд: {commands_count}",
+                "data": {
+                    "action": "Действие"
+                },
+                "data_description": {
+                    "action": "Выберите, что вы хотите сделать"
                 }
             },
             "add_device": {
@@ -42,13 +121,6 @@
                 },
                 "data_description": {
                     "device_name": "Например: Телевизор, Аудиосистема, Кондиционер"
-                }
-            },
-            "select_controller_for_command": {
-                "title": "Выбор ИК-пульта",
-                "description": "Выберите ИК-пульт для добавления команды.",
-                "data": {
-                    "controller_id": "ИК-пульт"
                 }
             },
             "select_device_for_command": {
@@ -70,32 +142,77 @@
             },
             "learn_command": {
                 "title": "Обучение команде",
-                "description": "Сейчас начнётся обучение команде \"{command_name}\" для устройства \"{device_name}\".\n\n1. Убедитесь, что ИК-пульт \"{controller_name}\" направлен на обучаемое устройство\n2. Нажмите \"Продолжить\"\n3. Сразу нажмите нужную кнопку на оригинальном пульте\n\nКоманда будет автоматически сохранена после получения ИК-сигнала."
+                "description": "Сейчас начнётся обучение команде \"{command_name}\" для устройства \"{device_name}\".\n\n1. Убедитесь, что ИК-пульт \"{controller_name}\" направлен на обучаемое устройство\n2. Нажмите \"Отправить\"\n3. Сразу нажмите нужную кнопку на оригинальном пульте\n\nКоманда будет автоматически сохранена после получения ИК-сигнала."
             },
-            "manage": {
-                "title": "Управление данными",
-                "description": "Просмотр текущего состояния IR Remote:\n\n• Пультов: {controllers_count}\n• Устройств: {devices_count}\n• Команд: {commands_count}\n\nИспользуйте Developer Tools → Services для программного управления устройствами и командами."
+            "select_device_for_remove": {
+                "title": "Выбор устройства для удаления",
+                "description": "Выберите устройство для удаления из пульта.",
+                "data": {
+                    "device_id": "Устройство"
+                }
+            },
+            "confirm_remove_device": {
+                "title": "⚠️ Подтверждение удаления устройства",
+                "description": "Вы собираетесь удалить устройство \"{device_name}\" из пульта \"{controller_name}\".\n\n⚠️ ВНИМАНИЕ: Будут удалены ВСЕ команды этого устройства ({commands_count} команд).\n\nЭто действие нельзя отменить!",
+                "data": {
+                    "confirm": "Да, удалить устройство"
+                }
+            },
+            "select_device_for_remove_command": {
+                "title": "Выбор устройства",
+                "description": "Выберите устройство для удаления команды.",
+                "data": {
+                    "device_id": "Устройство"
+                }
+            },
+            "select_command_for_remove": {
+                "title": "Выбор команды для удаления",
+                "description": "Выберите команду для удаления из устройства \"{device_name}\".",
+                "data": {
+                    "command_id": "Команда"
+                }
+            },
+            "confirm_remove_command": {
+                "title": "⚠️ Подтверждение удаления команды",
+                "description": "Вы собираетесь удалить команду \"{command_name}\" из устройства \"{device_name}\" (пульт: \"{controller_name}\").\n\nЭто действие нельзя отменить!",
+                "data": {
+                    "confirm": "Да, удалить команду"
+                }
             }
         },
         "error": {
-            "device_not_found": "Выбранное устройство не найдено в ZHA",
-            "zha_not_found": "ZHA интеграция не найдена или zha_toolkit недоступен",
+            "storage_error": "Ошибка загрузки данных хранилища",
+            "controller_not_found": "Пульт не найден",
             "device_exists": "Устройство с таким именем уже существует",
             "command_exists": "Команда с таким именем уже существует",
             "invalid_name": "Недопустимое имя. Используйте только буквы, цифры, пробелы, дефисы и подчёркивания",
-            "learn_timeout": "Время ожидания ИК-сигнала истекло",
-            "learn_failed": "Не удалось получить ИК-сигнал",
             "add_device_failed": "Не удалось добавить устройство",
+            "remove_failed": "Не удалось удалить. Попробуйте еще раз.",
             "no_devices": "У этого пульта нет устройств. Сначала добавьте устройство."
-        },
-        "abort": {
-            "single_instance_allowed": "Разрешена только одна копия интеграции"
         }
     },
     "entity": {
         "button": {
+            "add_command": {
+                "name": "Добавить команду"
+            },
             "device_command": {
                 "name": "{command_name}"
+            }
+        },
+        "remote": {
+            "remote_device": {
+                "name": "{device_name} Пульт"
+            }
+        },
+        "media_player": {
+            "media_player": {
+                "name": "{device_name}"
+            }
+        },
+        "climate": {
+            "climate": {
+                "name": "{device_name}"
             }
         }
     },
@@ -186,6 +303,38 @@
                 }
             }
         },
+        "remove_device": {
+            "name": "Удалить устройство",
+            "description": "Удаляет виртуальное устройство и все его команды из ИК-пульта",
+            "fields": {
+                "controller_id": {
+                    "name": "ID пульта",
+                    "description": "Идентификатор ИК-пульта"
+                },
+                "device": {
+                    "name": "Устройство",
+                    "description": "ID устройства для удаления"
+                }
+            }
+        },
+        "remove_command": {
+            "name": "Удалить команду",
+            "description": "Удаляет команду из устройства",
+            "fields": {
+                "controller_id": {
+                    "name": "ID пульта",
+                    "description": "Идентификатор ИК-пульта"
+                },
+                "device": {
+                    "name": "Устройство",
+                    "description": "ID устройства"
+                },
+                "command": {
+                    "name": "Команда",
+                    "description": "ID команды для удаления"
+                }
+            }
+        },
         "get_data": {
             "name": "Получить данные",
             "description": "Возвращает данные об ИК-пультах, устройствах и командах",
@@ -203,7 +352,32 @@
                 "add_controller": "Добавить новый ИК-пульт",
                 "add_device": "Добавить виртуальное устройство", 
                 "add_command": "Добавить команду к устройству",
-                "manage": "Управление существующими данными"
+                "copy": "Копировать устройства/команды",
+                "remove_device": "Удалить виртуальное устройство",
+                "remove_command": "Удалить команду устройства"
+            }
+        },
+        "device_type": {
+            "options": {
+                "tv": "Телевизор",
+                "audio": "Аудиосистема",
+                "projector": "Проектор",
+                "ac": "Кондиционер", 
+                "universal": "Другой пульт"
+            }
+        },
+        "options_action": {
+            "options": {
+                "add_device": "Добавить виртуальное устройство",
+                "add_command": "Добавить команду к устройству",
+                "remove_device": "Удалить виртуальное устройство",
+                "remove_command": "Удалить команду устройства"
+            }
+        },
+        "copy_type": {
+            "options": {
+                "device": "Копировать всё устройство",
+                "commands": "Копировать команды"
             }
         }
     }

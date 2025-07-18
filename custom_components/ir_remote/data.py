@@ -223,7 +223,7 @@ class IRRemoteStorage:
         
         return success
     
-    async def async_add_device(self, controller_id: str, device_id: str, device_name: str) -> bool:
+    async def async_add_device(self, controller_id: str, device_id: str, device_name: str, device_type: str = "universal") -> bool:
         """Add virtual device to controller."""
         if not self._validate_name(device_name):
             _LOGGER.warning("Invalid device name: %s", device_name)
@@ -241,12 +241,13 @@ class IRRemoteStorage:
         
         self._data["controllers"][controller_id]["devices"][device_id] = {
             "name": device_name,
+            "type": device_type,
             "commands": {}
         }
         
         success = await self.async_save()
         if success:
-            _LOGGER.info("Added device %s to controller %s", device_name, controller_id)
+            _LOGGER.info("Added device %s (%s) to controller %s", device_name, device_type, controller_id)
         
         return success
     
@@ -350,6 +351,7 @@ class IRRemoteStorage:
         
         return self._data.get("controllers", {}).get(controller_id)
     
+    
     def get_devices(self, controller_id: str) -> List[Dict[str, Any]]:
         """Get list of devices for controller."""
         controller = self.get_controller(controller_id)
@@ -361,6 +363,7 @@ class IRRemoteStorage:
             devices.append({
                 "id": device_id,
                 "name": device_data.get("name", "Unknown Device"),
+                "type": device_data.get("type", "universal"),  # ДОБАВЛЕНО: возвращаем тип
                 "command_count": len(device_data.get("commands", {}))
             })
         
@@ -372,7 +375,17 @@ class IRRemoteStorage:
         if not controller:
             return None
         
-        return controller.get("devices", {}).get(device_id)
+        device_data = controller.get("devices", {}).get(device_id)
+        if not device_data:
+            return None
+        
+        # Возвращаем полные данные устройства включая тип
+        return {
+            "id": device_id,
+            "name": device_data.get("name", "Unknown Device"),
+            "type": device_data.get("type", "universal"),  # ДОБАВЛЕНО: возвращаем тип
+            "commands": device_data.get("commands", {})
+        }
     
     def get_commands(self, controller_id: str, device_id: str) -> List[Dict[str, Any]]:
         """Get list of commands for device."""
@@ -471,3 +484,149 @@ class IRRemoteStorage:
             _LOGGER.info("All IR Remote data has been reset")
         
         return success
+
+    async def async_copy_device(
+        self,
+        source_controller_id: str,
+        source_device_id: str,
+        target_controller_id: str,
+        new_device_name: str,
+        new_device_id: Optional[str] = None
+    ) -> bool:
+        """Copy entire device from one controller to another (or same controller)."""
+        await self.async_load()
+        
+        # Validate source
+        if (source_controller_id not in self._data.get("controllers", {}) or
+            source_device_id not in self._data["controllers"][source_controller_id]["devices"]):
+            _LOGGER.warning("Source device %s not found in controller %s", source_device_id, source_controller_id)
+            return False
+        
+        # Validate target controller
+        if target_controller_id not in self._data.get("controllers", {}):
+            _LOGGER.warning("Target controller %s not found", target_controller_id)
+            return False
+        
+        # Validate new device name
+        if not self._validate_name(new_device_name):
+            _LOGGER.warning("Invalid new device name: %s", new_device_name)
+            return False
+        
+        # Generate new device ID if not provided
+        if not new_device_id:
+            base_device_id = new_device_name.lower().replace(" ", "_").replace("-", "_")
+            new_device_id = base_device_id
+            
+            # Check for conflicts and add suffix if needed
+            existing_devices = self._data["controllers"][target_controller_id]["devices"]
+            counter = 1
+            
+            while new_device_id in existing_devices:
+                counter += 1
+                new_device_id = f"{base_device_id}_{counter}"
+                _LOGGER.debug("Device ID conflict, trying: %s", new_device_id)
+        
+        # Final check if target device already exists (shouldn't happen with the logic above)
+        if new_device_id in self._data["controllers"][target_controller_id]["devices"]:
+            _LOGGER.error("Target device %s still exists in controller %s after ID generation", 
+                         new_device_id, target_controller_id)
+            return False
+        
+        # Get source device data
+        source_device = self._data["controllers"][source_controller_id]["devices"][source_device_id].copy()
+        
+        # Update device name
+        source_device["name"] = new_device_name
+        
+        # Copy device to target
+        self._data["controllers"][target_controller_id]["devices"][new_device_id] = source_device
+        
+        success = await self.async_save()
+        if success:
+            _LOGGER.info("Copied device from %s:%s to %s:%s (%s)", 
+                        source_controller_id, source_device_id,
+                        target_controller_id, new_device_id, new_device_name)
+        
+        return success
+    
+    async def async_copy_commands(
+        self,
+        source_controller_id: str,
+        source_device_id: str,
+        target_controller_id: str,
+        target_device_id: str,
+        command_ids: Optional[List[str]] = None
+    ) -> bool:
+        """Copy commands from one device to another."""
+        await self.async_load()
+        
+        # Validate source
+        if (source_controller_id not in self._data.get("controllers", {}) or
+            source_device_id not in self._data["controllers"][source_controller_id]["devices"]):
+            _LOGGER.warning("Source device %s not found in controller %s", source_device_id, source_controller_id)
+            return False
+        
+        # Validate target
+        if (target_controller_id not in self._data.get("controllers", {}) or
+            target_device_id not in self._data["controllers"][target_controller_id]["devices"]):
+            _LOGGER.warning("Target device %s not found in controller %s", target_device_id, target_controller_id)
+            return False
+        
+        # Get source commands
+        source_commands = self._data["controllers"][source_controller_id]["devices"][source_device_id]["commands"]
+        
+        # If no specific commands specified, copy all
+        if command_ids is None:
+            command_ids = list(source_commands.keys())
+        
+        # Validate that all specified commands exist
+        for cmd_id in command_ids:
+            if cmd_id not in source_commands:
+                _LOGGER.warning("Source command %s not found", cmd_id)
+                return False
+        
+        # Copy commands to target
+        target_commands = self._data["controllers"][target_controller_id]["devices"][target_device_id]["commands"]
+        copied_count = 0
+        
+        for cmd_id in command_ids:
+            # Check if command already exists in target
+            if cmd_id in target_commands:
+                _LOGGER.info("Command %s already exists in target, overwriting", cmd_id)
+            
+            # Copy command
+            target_commands[cmd_id] = source_commands[cmd_id].copy()
+            copied_count += 1
+        
+        success = await self.async_save()
+        if success:
+            _LOGGER.info("Copied %d commands from %s:%s to %s:%s", 
+                        copied_count,
+                        source_controller_id, source_device_id,
+                        target_controller_id, target_device_id)
+        
+        return success
+    
+    def get_all_controllers_with_devices(self) -> Dict[str, Dict[str, Any]]:
+        """Get all controllers with their devices info for copy operations."""
+        if not self._loaded:
+            return {}
+        
+        result = {}
+        for controller_id, controller_data in self._data.get("controllers", {}).items():
+            devices = []
+            for device_id, device_data in controller_data.get("devices", {}).items():
+                devices.append({
+                    "id": device_id,
+                    "name": device_data.get("name", "Unknown Device"),
+                    "type": device_data.get("type", "universal"),
+                    "command_count": len(device_data.get("commands", {})),
+                    "commands": list(device_data.get("commands", {}).keys())
+                })
+            
+            result[controller_id] = {
+                "name": controller_data.get("name", "Unknown Controller"),
+                "devices": devices
+            }
+        
+        return result

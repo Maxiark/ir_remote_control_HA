@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError, ConfigEntryNotReady
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
     DOMAIN,
@@ -39,13 +39,14 @@ from .const import (
     MANUFACTURER,
     MODEL_CONTROLLER,
     MODEL_VIRTUAL_DEVICE,
+    DEVICE_TYPE_UNIVERSAL,
 )
 from .data import IRRemoteStorage
 
 _LOGGER = logging.getLogger(__name__)
 
 # Platforms to load
-PLATFORMS = [Platform.BUTTON]
+PLATFORMS = [Platform.BUTTON, Platform.REMOTE, Platform.MEDIA_PLAYER, Platform.CLIMATE]
 
 # Config schema - integration only works with config entries
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -374,10 +375,15 @@ async def _register_services(hass: HomeAssistant) -> None:
             return
         
         # Send the code
-        await send_code_service(ServiceCall(DOMAIN, SERVICE_SEND_CODE, {
-            ATTR_CONTROLLER_ID: controller_id,
-            ATTR_CODE: code
-        }))
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SEND_CODE,
+            {
+                ATTR_CONTROLLER_ID: controller_id,
+                ATTR_CODE: code
+            },
+            blocking=True
+        )
     
     async def add_device_service(call: ServiceCall) -> None:
         """Service to add virtual device."""
@@ -398,7 +404,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         device_id = device_name.lower().replace(" ", "_").replace("-", "_")
         
         # Add device
-        success = await storage.async_add_device(controller_id, device_id, device_name)
+        success = await storage.async_add_device(controller_id, device_id, device_name, DEVICE_TYPE_UNIVERSAL)
         if success:
             # Reload the config entry to create new entities
             config_entry = hass.config_entries.async_get_entry(controller_id)
@@ -437,6 +443,75 @@ async def _register_services(hass: HomeAssistant) -> None:
         else:
             _LOGGER.error("Failed to add command: %s", command_name)
     
+    async def remove_device_service(call: ServiceCall) -> None:
+        """Service to remove virtual device."""
+        controller_id = call.data[ATTR_CONTROLLER_ID]
+        device_id = call.data[ATTR_DEVICE]
+
+        _LOGGER.info("Removing device: %s from controller %s", device_id, controller_id)
+
+        # Get storage
+        entry_data = hass.data[DOMAIN].get(controller_id)
+        if not entry_data:
+            _LOGGER.error("Controller %s not found", controller_id)
+            raise HomeAssistantError(f"Controller {controller_id} not found")
+
+        storage = entry_data["storage"]
+
+        # Get all commands for this device before removal (for entity cleanup)
+        commands = storage.get_commands(controller_id, device_id)
+
+        # Remove device from storage
+        success = await storage.async_remove_device(controller_id, device_id)
+        if success:
+            _LOGGER.info("Successfully removed device: %s", device_id)
+
+            # Clean up entities from Entity Registry
+            await _cleanup_device_entities(hass, controller_id, device_id, commands)
+
+            # Clean up device from Device Registry
+            await _cleanup_virtual_device(hass, controller_id, device_id)
+            # Reload integration to update entities
+            config_entry = hass.config_entries.async_get_entry(controller_id) 
+            if config_entry:
+                await hass.config_entries.async_reload(controller_id)
+                
+        else:
+            _LOGGER.error("Failed to remove device: %s", device_id)
+            raise HomeAssistantError(f"Failed to remove device {device_id}")
+
+    async def remove_command_service(call: ServiceCall) -> None:
+        """Service to remove command."""
+        controller_id = call.data[ATTR_CONTROLLER_ID]
+        device_id = call.data[ATTR_DEVICE]
+        command_id = call.data[ATTR_COMMAND]
+
+        _LOGGER.info("Removing command: %s from device %s", command_id, device_id)
+
+        # Get storage
+        entry_data = hass.data[DOMAIN].get(controller_id)
+        if not entry_data:
+            _LOGGER.error("Controller %s not found", controller_id)
+            raise HomeAssistantError(f"Controller {controller_id} not found")
+
+        storage = entry_data["storage"]
+
+        # Remove command from storage
+        success = await storage.async_remove_command(controller_id, device_id, command_id)
+        if success:
+            _LOGGER.info("Successfully removed command: %s", command_id)
+
+            # Clean up entity from Entity Registry
+            await _cleanup_command_entity(hass, controller_id, device_id, command_id)
+            # Reload integration to update entities
+            config_entry = hass.config_entries.async_get_entry(controller_id)
+            if config_entry:
+                await hass.config_entries.async_reload(controller_id)
+
+        else:
+            _LOGGER.error("Failed to remove command: %s", command_id)
+            raise HomeAssistantError(f"Failed to remove command {command_id}")
+
     async def get_data_service(call: ServiceCall) -> Dict[str, Any]:
         """Service to get IR Remote data."""
         controller_id = call.data.get(ATTR_CONTROLLER_ID)
@@ -467,6 +542,8 @@ async def _register_services(hass: HomeAssistant) -> None:
         (SERVICE_SEND_COMMAND, send_command_service, SEND_COMMAND_SCHEMA),
         (SERVICE_ADD_DEVICE, add_device_service, ADD_DEVICE_SCHEMA),
         (SERVICE_ADD_COMMAND, add_command_service, ADD_COMMAND_SCHEMA),
+        (SERVICE_REMOVE_DEVICE, remove_device_service, REMOVE_DEVICE_SCHEMA),
+        (SERVICE_REMOVE_COMMAND, remove_command_service, REMOVE_COMMAND_SCHEMA),
         (SERVICE_GET_DATA, get_data_service, GET_DATA_SCHEMA),
     ]
     
@@ -507,7 +584,7 @@ async def _register_ir_controller_device(hass: HomeAssistant, entry: ConfigEntry
         name=entry.title,
         manufacturer=MANUFACTURER,
         model=MODEL_CONTROLLER,
-        sw_version="2.0.1",
+        sw_version="2.1.0",
     )
     
     _LOGGER.debug("Registered IR controller device: %s", entry.title)
@@ -537,6 +614,64 @@ async def _create_virtual_devices(hass: HomeAssistant, entry: ConfigEntry, stora
         
         _LOGGER.debug("Created virtual device: %s", device_name)
 
+async def _cleanup_command_entity(hass: HomeAssistant, controller_id: str, device_id: str, command_id: str) -> None:
+    """Remove command button entity from Entity Registry."""
+    entity_registry = er.async_get(hass)
+
+    # Unique ID for command button
+    unique_id = f"{DOMAIN}_{controller_id}_{device_id}_{command_id}"
+
+    # Find and remove entity
+    entity_id = entity_registry.async_get_entity_id("button", DOMAIN, unique_id)
+    if entity_id:
+        entity_registry.async_remove(entity_id)
+        _LOGGER.debug("Removed command entity: %s", entity_id)
+    else:
+        _LOGGER.debug("Command entity not found for cleanup: %s", unique_id)
+
+
+async def _cleanup_device_entities(hass: HomeAssistant, controller_id: str, device_id: str, commands: list) -> None:
+    """Remove all button entities for a device from Entity Registry."""
+    entity_registry = er.async_get(hass)
+
+    # Remove all command button entities
+    for command in commands:
+        command_id = command["id"]
+        unique_id = f"{DOMAIN}_{controller_id}_{device_id}_{command_id}"
+
+        entity_id = entity_registry.async_get_entity_id("button", DOMAIN, unique_id)
+        if entity_id:
+            entity_registry.async_remove(entity_id)
+            _LOGGER.debug("Removed command entity: %s", entity_id)
+
+    # Remove other entities (remote, media_player, climate)
+    entity_types_to_remove = [
+        ("remote", f"{DOMAIN}_{controller_id}_{device_id}_remote"),
+        ("media_player", f"{DOMAIN}_{controller_id}_{device_id}_player"),
+        ("climate", f"{DOMAIN}_{controller_id}_{device_id}_climate"),
+    ]
+    
+    for platform, unique_id in entity_types_to_remove:
+        entity_id = entity_registry.async_get_entity_id(platform, DOMAIN, unique_id)
+        if entity_id:
+            entity_registry.async_remove(entity_id)
+            _LOGGER.debug("Removed %s entity: %s", platform, entity_id)
+
+
+async def _cleanup_virtual_device(hass: HomeAssistant, controller_id: str, device_id: str) -> None:
+    """Remove virtual device from Device Registry."""
+    device_registry = dr.async_get(hass)
+
+    # Device identifier for virtual device
+    device_identifier = (DOMAIN, f"{controller_id}_{device_id}")
+
+    # Find and remove device
+    device_entry = device_registry.async_get_device(identifiers={device_identifier})
+    if device_entry:
+        device_registry.async_remove_device(device_entry.id)
+        _LOGGER.debug("Removed virtual device: %s", device_entry.name)
+    else:
+        _LOGGER.debug("Virtual device not found for cleanup: %s", device_identifier)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
@@ -564,7 +699,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("Removing IR Remote services (no active controllers)")
             services = [
                 SERVICE_LEARN_COMMAND, SERVICE_SEND_CODE, SERVICE_SEND_COMMAND,
-                SERVICE_ADD_DEVICE, SERVICE_ADD_COMMAND, SERVICE_GET_DATA
+                SERVICE_ADD_DEVICE, SERVICE_ADD_COMMAND, SERVICE_REMOVE_DEVICE,
+                SERVICE_REMOVE_COMMAND, SERVICE_GET_DATA
             ]
             for service in services:
                 if hass.services.has_service(DOMAIN, service):
