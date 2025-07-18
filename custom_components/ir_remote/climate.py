@@ -225,6 +225,8 @@ class IRClimate(ClimateEntity):
             command = self._find_command(["mode_auto", "auto"])
         elif hvac_mode == HVACMode.FAN_ONLY:
             command = self._find_command(["mode_fan", "fan", "fan_only"])
+        elif hvac_mode == HVACMode.DRY:
+            command = self._find_command(["mode_dry", "dry", "dehumidify"])
         else:
             _LOGGER.warning("Unsupported HVAC mode: %s", hvac_mode)
             return
@@ -240,6 +242,8 @@ class IRClimate(ClimateEntity):
                 self._current_hvac_action = HVACAction.HEATING
             elif hvac_mode == HVACMode.FAN_ONLY:
                 self._current_hvac_action = HVACAction.FAN
+            elif hvac_mode == HVACMode.DRY:
+                self._current_hvac_action = HVACAction.DRY
             else:
                 self._current_hvac_action = HVACAction.IDLE
             
