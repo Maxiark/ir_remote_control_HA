@@ -514,11 +514,22 @@ class IRRemoteStorage:
         
         # Generate new device ID if not provided
         if not new_device_id:
-            new_device_id = new_device_name.lower().replace(" ", "_").replace("-", "_")
+            base_device_id = new_device_name.lower().replace(" ", "_").replace("-", "_")
+            new_device_id = base_device_id
+            
+            # Check for conflicts and add suffix if needed
+            existing_devices = self._data["controllers"][target_controller_id]["devices"]
+            counter = 1
+            
+            while new_device_id in existing_devices:
+                counter += 1
+                new_device_id = f"{base_device_id}_{counter}"
+                _LOGGER.debug("Device ID conflict, trying: %s", new_device_id)
         
-        # Check if target device already exists
+        # Final check if target device already exists (shouldn't happen with the logic above)
         if new_device_id in self._data["controllers"][target_controller_id]["devices"]:
-            _LOGGER.warning("Target device %s already exists in controller %s", new_device_id, target_controller_id)
+            _LOGGER.error("Target device %s still exists in controller %s after ID generation", 
+                         new_device_id, target_controller_id)
             return False
         
         # Get source device data

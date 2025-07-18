@@ -76,7 +76,7 @@
                     "new_device_name": "New device name"
                 },
                 "data_description": {
-                    "new_device_name": "Name must be unique within the controller"
+                    "new_device_name": "In case of name conflicts, a suffix will be automatically added (_2)"
                 }
             },
             "copy_confirm": {

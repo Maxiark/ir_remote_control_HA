@@ -461,18 +461,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors={CONF_NEW_DEVICE_NAME: ERROR_INVALID_NAME}
                 )
             
-            # Check if device with this name already exists
-            target_controller_id = self.flow_data[CONF_TARGET_CONTROLLER_ID]
-            new_device_id = new_device_name.lower().replace(" ", "_").replace("-", "_")
-            
-            devices = self.storage.get_devices(target_controller_id)
-            for device in devices:
-                if device["id"] == new_device_id:
-                    return self.async_show_form(
-                        step_id=STEP_COPY_DEVICE_NAME,
-                        errors={CONF_NEW_DEVICE_NAME: ERROR_DEVICE_EXISTS}
-                    )
-            
             self.flow_data[CONF_NEW_DEVICE_NAME] = new_device_name
             return await self.async_step_copy_confirm()
         
@@ -516,9 +504,14 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     
                     if success:
                         # Reload target controller entry
-                        self.hass.async_create_task(
-                            self._reload_entry_after_delay(target_controller_id)
-                        )
+                    #    self.hass.async_create_task(
+                    #        self._reload_entry_after_delay(target_controller_id)
+                    #    )
+                        config_entry = self.hass.config_entries.async_get_entry(target_controller_id)
+                        if config_entry:
+                            self.hass.async_create_task(
+                                self.hass.config_entries.async_reload(target_controller_id)
+                            )
                         
                         return self.async_abort(
                             reason="device_copied",
@@ -542,9 +535,14 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     
                     if success:
                         # Reload target controller entry
-                        self.hass.async_create_task(
-                            self._reload_entry_after_delay(target_controller_id)
-                        )
+                    #    self.hass.async_create_task(
+                    #        self._reload_entry_after_delay(target_controller_id)
+                    #    )
+                        config_entry = self.hass.config_entries.async_get_entry(target_controller_id)
+                        if config_entry:
+                            self.hass.async_create_task(
+                                self.hass.config_entries.async_reload(target_controller_id)
+                            )
                         
                         command_count = len(source_commands) if source_commands else 0
                         return self.async_abort(
