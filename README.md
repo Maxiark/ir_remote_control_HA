@@ -49,7 +49,7 @@ IR Remote Control позволяет Управлять умными Zigbee ИК
 
 1. Убедитесь, что [HACS](https://hacs.xyz/) установлен
 2. Перейдите в HACS → Интеграции
-3. Добавьте [этот репозиторий] (https://github.com/Maxiark/ir_remote_control_HA)  (Три точки сверху справа - Пользовательские репозитории)
+3. Добавьте [этот репозиторий](https://github.com/Maxiark/ir_remote_control_HA)  (Три точки сверху справа - Пользовательские репозитории)
 4. Найдите IR Remote и Скачайте
 5. Перезапустите Home Assistant
 
