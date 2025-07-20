@@ -748,8 +748,9 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
     
     async def async_step_select_device_type(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
         """Handle device type selection.""" 
+        controller_id = self.config_entry.entry_id
+
         if user_input is not None:
-            controller_id = self.flow_data[CONF_CONTROLLER_ID]
             device_id = self.flow_data["device_id"]
             device_name = self.flow_data[CONF_DEVICE_NAME]
             device_type = user_input[CONF_DEVICE_TYPE]
