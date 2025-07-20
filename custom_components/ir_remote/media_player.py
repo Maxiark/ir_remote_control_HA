@@ -145,8 +145,7 @@ class IRMediaPlayer(MediaPlayerEntity):
         features = (
             MediaPlayerEntityFeature.TURN_ON |
             MediaPlayerEntityFeature.TURN_OFF |
-            MediaPlayerEntityFeature.VOLUME_UP |
-            MediaPlayerEntityFeature.VOLUME_DOWN |
+            MediaPlayerEntityFeature.VOLUME_STEP |  # Изменено: заменено VOLUME_UP и VOLUME_DOWN на VOLUME_STEP
             MediaPlayerEntityFeature.VOLUME_MUTE
         )
         
