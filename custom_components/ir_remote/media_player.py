@@ -130,7 +130,7 @@ class IRMediaPlayer(MediaPlayerEntity):
         )
         
         # Media player state
-        self._state = MediaPlayerState.OFF
+        self._state = MediaPlayerState.IDLE
         self._volume_level = 0.5
         self._is_volume_muted = False
         self._current_source = None
@@ -223,7 +223,7 @@ class IRMediaPlayer(MediaPlayerEntity):
         
         if power_command:
             await self._send_command(power_command)
-            self._state = MediaPlayerState.ON
+            self._state = MediaPlayerState.IDLE
             self.async_write_ha_state()
             _LOGGER.info("Sent power on command: %s", power_command)
         else:
@@ -239,7 +239,7 @@ class IRMediaPlayer(MediaPlayerEntity):
         
         if power_command:
             await self._send_command(power_command)
-            self._state = MediaPlayerState.OFF
+            self._state = MediaPlayerState.IDLE
             self.async_write_ha_state()
             _LOGGER.info("Sent power off command: %s", power_command)
         else:
