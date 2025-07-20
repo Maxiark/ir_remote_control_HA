@@ -721,36 +721,74 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
                     pass
                 
                 if not errors:
-                    # Add device
-                    try:
-                        success = await self.storage.async_add_device(controller_id, device_id, device_name)
-                        
-                        if success:
-                            # Schedule reload after current flow completes
-                            self.hass.async_create_task(
-                                self._reload_entry_after_delay(controller_id)
-                            )
-                            
-                            return self.async_create_entry(
-                                title="",
-                                data={}
-                            )
-                        else:
-                            errors["base"] = "add_device_failed"
-                    except Exception:
-                        errors["base"] = "add_device_failed"
+                    # Store device info and proceed to type selection
+                    self.flow_data[CONF_DEVICE_NAME] = device_name
+                    self.flow_data["device_id"] = device_id
+                    return await self.async_step_select_device_type()
         
-        controller = self.storage.get_controller(controller_id)
-        controller_name = controller.get("name", "Неизвестный пульт") if controller else "Неизвестный пульт"
+        controller_name = "Unknown"
+        if self.storage:
+            try:
+                controller = self.storage.get_controller(self.flow_data[CONF_CONTROLLER_ID])
+                if controller:
+                    controller_name = controller["name"]
+            except Exception:
+                pass
         
         return self.async_show_form(
-            step_id="add_device",
+            step_id=STEP_ADD_DEVICE,
             data_schema=vol.Schema({
-                vol.Required("device_name"): cv.string,
+                vol.Required(CONF_DEVICE_NAME): cv.string,
             }),
             errors=errors,
             description_placeholders={
                 "controller_name": controller_name
+            }
+        )
+    
+    async def async_step_select_device_type(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
+        """Handle device type selection.""" 
+        controller_id = self.config_entry.entry_id
+
+        if user_input is not None:
+            device_id = self.flow_data["device_id"]
+            device_name = self.flow_data[CONF_DEVICE_NAME]
+            device_type = user_input[CONF_DEVICE_TYPE]
+            
+            try:
+                # Add device with selected type
+                success = await self.storage.async_add_device(controller_id, device_id, device_name, device_type)
+                
+                if success:
+                    # Schedule reload after current flow completes
+                    self.hass.async_create_task(
+                        self._reload_entry_after_delay(controller_id)
+                    )
+                    
+                    return self.async_abort(
+                        reason="device_added",
+                        description_placeholders={
+                            "device_name": device_name
+                        }
+                    )
+                else:
+                    return self.async_show_form(
+                        step_id=STEP_SELECT_DEVICE_TYPE,
+                        errors={"base": "add_device_failed"}
+                    )
+            except Exception:
+                return self.async_show_form(
+                    step_id=STEP_SELECT_DEVICE_TYPE,
+                    errors={"base": "add_device_failed"}
+                )
+        
+        return self.async_show_form(
+            step_id=STEP_SELECT_DEVICE_TYPE,
+            data_schema=vol.Schema({
+                vol.Required(CONF_DEVICE_TYPE): vol.In(DEVICE_TYPES),
+            }),
+            description_placeholders={
+                "device_name": self.flow_data.get(CONF_DEVICE_NAME, "Unknown")
             }
         )
     
