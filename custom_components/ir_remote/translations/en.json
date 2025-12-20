@@ -120,7 +120,7 @@
                     "device_name": "Device Name"
                 },
                 "data_description": {
-                    "device_name": "For example: TV, Audio System, Air Conditioner"
+                    "device_name": "For example: TV, Audio System, Air Conditioner, LED Strip"
                 }
             },
             "select_device_for_command": {
@@ -212,6 +212,11 @@
         },
         "climate": {
             "climate": {
+                "name": "{device_name}"
+            }
+        },
+        "light": {
+            "light": {
                 "name": "{device_name}"
             }
         }
@@ -352,6 +357,7 @@
                 "add_controller": "Add new IR controller",
                 "add_device": "Add virtual device", 
                 "add_command": "Add command to device",
+                "copy": "Copy devices/commands",
                 "remove_device": "Remove virtual device",
                 "remove_command": "Remove device command"
             }
@@ -361,15 +367,14 @@
                 "tv": "Television",
                 "audio": "Audio System",
                 "projector": "Projector",
-                "ac": "Air Conditioner", 
-                "universal": "Universal Device"
+                "ac": "Air Conditioner",
+                "light": "Light/LED Strip or Universal"
             }
         },
         "options_action": {
             "options": {
                 "add_device": "Add virtual device",
                 "add_command": "Add command to device",
-                "copy": "Copy devices/commands",
                 "remove_device": "Remove virtual device",
                 "remove_command": "Remove device command"
             }

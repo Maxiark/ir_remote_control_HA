@@ -120,7 +120,7 @@
                     "device_name": "Название устройства"
                 },
                 "data_description": {
-                    "device_name": "Например: Телевизор, Аудиосистема, Кондиционер"
+                    "device_name": "Например: Телевизор, Аудиосистема, Кондиционер, Гирлянда"
                 }
             },
             "select_device_for_command": {
@@ -212,6 +212,11 @@
         },
         "climate": {
             "climate": {
+                "name": "{device_name}"
+            }
+        },
+        "light": {
+            "light": {
                 "name": "{device_name}"
             }
         }
@@ -362,8 +367,8 @@
                 "tv": "Телевизор",
                 "audio": "Аудиосистема",
                 "projector": "Проектор",
-                "ac": "Кондиционер", 
-                "universal": "Другой пульт"
+                "ac": "Кондиционер",
+                "light": "Свет/Гирлянда или универсальный"
             }
         },
         "options_action": {

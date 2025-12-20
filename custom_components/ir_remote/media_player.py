@@ -1,6 +1,6 @@
 """Media Player platform for IR Remote integration."""
 import logging
-from typing import Any, Optional, List
+from typing import Any, Optional
 
 from homeassistant.components.media_player import (
     MediaPlayerEntity,
@@ -24,7 +24,6 @@ from .const import (
     DEVICE_TYPE_TV,
     DEVICE_TYPE_AUDIO,
     DEVICE_TYPE_PROJECTOR,
-    DEVICE_TYPE_UNIVERSAL,
     MEDIA_PLAYER_TYPES,
     POWER_ON_COMMANDS,
     POWER_OFF_COMMANDS,
@@ -66,14 +65,13 @@ async def async_setup_entry(
     for device in devices:
         device_id = device["id"]
         device_name = device["name"]
-        device_type = device.get("type", "universal")
+        device_type = device.get("type", "light")
         
         _LOGGER.info("Processing device: %s (%s) - type: %s", device_name, device_id, device_type)
         
-        # Создаём Media Player для ВСЕХ типов устройств (включая Universal!)
-        # Для TV/Audio/Projector - стандартный функционал
-        # Для Universal - source_list с командами
-        if device_type in MEDIA_PLAYER_TYPES or device_type == DEVICE_TYPE_UNIVERSAL:
+        # Создаём Media Player только для специализированных типов (TV, Audio, Projector)
+        # Light устройства используют свою платформу!
+        if device_type in MEDIA_PLAYER_TYPES:
             _LOGGER.debug("Creating media player for device: %s (%s)", device_name, device_type)
             
             # Create media player entity for this device
@@ -96,7 +94,7 @@ async def async_setup_entry(
 
 
 class IRMediaPlayer(MediaPlayerEntity):
-    """Media Player entity for IR devices (TV, Audio, Projector, Universal)."""
+    """Media Player entity for IR devices (TV, Audio, Projector)."""
     
     def __init__(
         self,
@@ -136,49 +134,21 @@ class IRMediaPlayer(MediaPlayerEntity):
         self._state = MediaPlayerState.IDLE
         self._volume_level = 0.5
         self._is_volume_muted = False
-        self._current_source = None
         
         # Set supported features based on device type
         self._set_supported_features()
         
-        # Initialize source list (для всех типов, особенно для Universal)
-        self._update_source_list()
-        
         _LOGGER.debug("Initialized media player: %s (%s)", device_name, device_type)
-    
-    def _update_source_list(self) -> None:
-        """Update source list from available commands.
-        
-        Excludes power commands (on/off) as they are handled by turn_on/turn_off methods.
-        """
-        commands = self._storage.get_commands(self._controller_id, self._device_id)
-        
-        # Фильтруем команды питания - они не должны быть в источниках
-        all_power_commands = set(POWER_ON_COMMANDS + POWER_OFF_COMMANDS)
-        
-        self._attr_source_list = [
-            command["id"] for command in commands
-            if command["id"].lower() not in all_power_commands
-        ]
-        
-        _LOGGER.debug("Updated source list for %s: %s (filtered out power commands)", 
-                     self._device_name, self._attr_source_list)
     
     def _set_supported_features(self) -> None:
         """Set supported features based on device type."""
-        # Базовые возможности для всех типов
+        # Базовые возможности для специализированных типов
         features = (
             MediaPlayerEntityFeature.TURN_ON |
             MediaPlayerEntityFeature.TURN_OFF |
-            MediaPlayerEntityFeature.SELECT_SOURCE  # Источники для всех!
+            MediaPlayerEntityFeature.VOLUME_STEP |
+            MediaPlayerEntityFeature.VOLUME_MUTE
         )
-        
-        # Дополнительные возможности для специализированных типов
-        if self._device_type in [DEVICE_TYPE_TV, DEVICE_TYPE_AUDIO, DEVICE_TYPE_PROJECTOR]:
-            features |= (
-                MediaPlayerEntityFeature.VOLUME_STEP |
-                MediaPlayerEntityFeature.VOLUME_MUTE
-            )
         
         if self._device_type == DEVICE_TYPE_TV:
             features |= (
@@ -223,36 +193,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         return self._is_volume_muted
     
     @property
-    def source(self) -> Optional[str]:
-        """Name of the current input source (последняя команда)."""
-        return self._current_source
-    
-    @property
-    def source_list(self) -> Optional[List[str]]:
-        """List of available input sources (команды устройства)."""
-        # Обновляем список при каждом запросе на случай если команды изменились
-        self._update_source_list()
-        return self._attr_source_list
-    
-    async def async_select_source(self, source: str) -> None:
-        """Select input source (выполнить команду)."""
-        _LOGGER.info("Selecting source (executing command) '%s' for %s", source, self._device_name)
-        
-        # Проверяем что команда существует
-        if source not in self.source_list:
-            _LOGGER.warning("Source %s not found in available sources for %s", source, self._device_name)
-            return
-        
-        # Выполняем команду
-        await self._send_command(source)
-        
-        # Обновляем текущий источник
-        self._current_source = source
-        self.async_write_ha_state()
-        
-        _LOGGER.debug("Successfully selected source %s for %s", source, self._device_name)
-    
-    @property
     def available(self) -> bool:
         """Return if entity is available."""
         return True
@@ -266,8 +206,6 @@ class IRMediaPlayer(MediaPlayerEntity):
             return "mdi:speaker"
         elif self._device_type == DEVICE_TYPE_PROJECTOR:
             return "mdi:projector"
-        elif self._device_type == DEVICE_TYPE_UNIVERSAL:
-            return "mdi:remote"  # Иконка пульта для универсальных устройств
         else:
             return "mdi:remote"
     
@@ -282,7 +220,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         if power_command:
             await self._send_command(power_command)
             self._state = MediaPlayerState.IDLE
-            self._current_source = power_command
             self.async_write_ha_state()
             _LOGGER.info("Sent power on command: %s", power_command)
         else:
@@ -299,7 +236,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         if power_command:
             await self._send_command(power_command)
             self._state = MediaPlayerState.IDLE
-            self._current_source = power_command
             self.async_write_ha_state()
             _LOGGER.info("Sent power off command: %s", power_command)
         else:
@@ -311,7 +247,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         if command:
             await self._send_command(command)
             self._volume_level = min(1.0, self._volume_level + 0.1)
-            self._current_source = command
             self.async_write_ha_state()
         else:
             _LOGGER.warning("No volume up command found for %s", self._device_name)
@@ -322,7 +257,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         if command:
             await self._send_command(command)
             self._volume_level = max(0.0, self._volume_level - 0.1)
-            self._current_source = command
             self.async_write_ha_state()
         else:
             _LOGGER.warning("No volume down command found for %s", self._device_name)
@@ -333,7 +267,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         if command:
             await self._send_command(command)
             self._is_volume_muted = mute
-            self._current_source = command
             self.async_write_ha_state()
         else:
             _LOGGER.warning("No mute command found for %s", self._device_name)
@@ -344,7 +277,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         if command:
             await self._send_command(command)
             self._state = MediaPlayerState.PLAYING
-            self._current_source = command
             self.async_write_ha_state()
         else:
             _LOGGER.warning("No play command found for %s", self._device_name)
@@ -355,7 +287,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         if command:
             await self._send_command(command)
             self._state = MediaPlayerState.PAUSED
-            self._current_source = command
             self.async_write_ha_state()
         else:
             _LOGGER.warning("No pause command found for %s", self._device_name)
@@ -366,7 +297,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         if command:
             await self._send_command(command)
             self._state = MediaPlayerState.IDLE
-            self._current_source = command
             self.async_write_ha_state()
         else:
             _LOGGER.warning("No stop command found for %s", self._device_name)
@@ -380,8 +310,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         
         if command:
             await self._send_command(command)
-            self._current_source = command
-            self.async_write_ha_state()
         else:
             _LOGGER.warning("No next track/channel command found for %s", self._device_name)
     
@@ -394,8 +322,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         
         if command:
             await self._send_command(command)
-            self._current_source = command
-            self.async_write_ha_state()
         else:
             _LOGGER.warning("No previous track/channel command found for %s", self._device_name)
     
@@ -422,16 +348,8 @@ class IRMediaPlayer(MediaPlayerEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
-        # Создаём словарь соответствия номеров источников их названиям
-        source_name_map = {}
-        if self._attr_source_list:
-            for idx, source in enumerate(self._attr_source_list, start=1):
-                source_name_map[f"Источник {idx}"] = source
-        
         return {
             "device_id": self._device_id,
             "controller_id": self._controller_id,
             "device_type": self._device_type,
-            "available_commands": len(self._attr_source_list or []),
-            "source_name_map": source_name_map,  # Mapping для пользователя
         }

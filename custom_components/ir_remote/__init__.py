@@ -39,14 +39,14 @@ from .const import (
     MANUFACTURER,
     MODEL_CONTROLLER,
     MODEL_VIRTUAL_DEVICE,
-    DEVICE_TYPE_UNIVERSAL,
+    DEVICE_TYPE_LIGHT,
 )
 from .data import IRRemoteStorage
 
 _LOGGER = logging.getLogger(__name__)
 
-# Platforms to load - REMOTE удалён!
-PLATFORMS = [Platform.BUTTON, Platform.MEDIA_PLAYER, Platform.CLIMATE]
+# Platforms to load - добавлен LIGHT!
+PLATFORMS = [Platform.BUTTON, Platform.LIGHT, Platform.MEDIA_PLAYER, Platform.CLIMATE]
 
 # Config schema - integration only works with config entries
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -197,9 +197,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Create virtual devices
     await _create_virtual_devices(hass, entry, storage)
     
-    # Migrate old Remote entities to Media Player for Universal devices
-    _LOGGER.debug("Starting migration from Remote to Media Player")
-    await _migrate_remote_to_media_player(hass, controller_id, storage)
+    # Migrate old Universal devices to Light type
+    _LOGGER.debug("Starting migration from Universal to Light")
+    await _migrate_universal_to_light(hass, controller_id, storage)
     
     # Forward to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -407,8 +407,8 @@ async def _register_services(hass: HomeAssistant) -> None:
         # Generate device ID
         device_id = device_name.lower().replace(" ", "_").replace("-", "_")
         
-        # Add device
-        success = await storage.async_add_device(controller_id, device_id, device_name, DEVICE_TYPE_UNIVERSAL)
+        # Add device with Light type by default
+        success = await storage.async_add_device(controller_id, device_id, device_name, DEVICE_TYPE_LIGHT)
         if success:
             # Reload the config entry to create new entities
             config_entry = hass.config_entries.async_get_entry(controller_id)
@@ -594,17 +594,22 @@ async def _register_ir_controller_device(hass: HomeAssistant, entry: ConfigEntry
     _LOGGER.debug("Registered IR controller device: %s", entry.title)
 
 
-async def _migrate_remote_to_media_player(hass: HomeAssistant, controller_id: str, storage: IRRemoteStorage) -> None:
-    """Migrate old Remote entities to Media Player for Universal devices.
+async def _migrate_universal_to_light(hass: HomeAssistant, controller_id: str, storage: IRRemoteStorage) -> None:
+    """Migrate Universal devices to Light type.
     
-    This function removes old remote.* entities for Universal type devices.
-    Media Player entities will be created automatically by the platform.
+    This migration:
+    1. Updates device type in storage: 'universal' → 'light'
+    2. Removes old remote.* entities for these devices
+    3. Removes old media_player.* entities for these devices
+    4. Light entities will be created automatically by the platform
     """
     entity_registry = er.async_get(hass)
     
-    # Get all Universal devices for this controller
+    # Get all devices for this controller
     devices = storage.get_devices(controller_id)
-    universal_devices = [d for d in devices if d.get("type") == DEVICE_TYPE_UNIVERSAL]
+    
+    # Find devices with old 'universal' type
+    universal_devices = [d for d in devices if d.get("type") in ["universal", None]]
     
     if not universal_devices:
         _LOGGER.debug("No Universal devices found for migration")
@@ -616,20 +621,42 @@ async def _migrate_remote_to_media_player(hass: HomeAssistant, controller_id: st
         device_id = device["id"]
         device_name = device["name"]
         
-        # Check if old Remote entity exists
+        _LOGGER.info("Migrating device '%s' from 'universal' to 'light' type", device_name)
+        
+        # 1. Update device type in storage
+        # Получаем полные данные устройства из storage
+        controller_data = storage.get_controller(controller_id)
+        if controller_data and "devices" in controller_data:
+            device_data = controller_data["devices"].get(device_id)
+            if device_data:
+                # Обновляем тип на 'light'
+                device_data["type"] = "light"
+                _LOGGER.debug("Updated device type in storage: %s -> light", device_name)
+        
+        # 2. Remove old Remote entity
         old_remote_unique_id = f"{DOMAIN}_{controller_id}_{device_id}_remote"
         old_remote_entity_id = entity_registry.async_get_entity_id("remote", DOMAIN, old_remote_unique_id)
         
         if old_remote_entity_id:
-            _LOGGER.info("Migrating device '%s': removing old Remote entity %s", device_name, old_remote_entity_id)
+            _LOGGER.info("Removing old Remote entity: %s", old_remote_entity_id)
             entity_registry.async_remove(old_remote_entity_id)
-            migrated_count += 1
-            _LOGGER.debug("Removed old Remote entity: %s", old_remote_entity_id)
+        
+        # 3. Remove old Media Player entity (если был для universal)
+        old_media_player_unique_id = f"{DOMAIN}_{controller_id}_{device_id}_player"
+        old_media_player_entity_id = entity_registry.async_get_entity_id("media_player", DOMAIN, old_media_player_unique_id)
+        
+        if old_media_player_entity_id:
+            _LOGGER.info("Removing old Media Player entity: %s", old_media_player_entity_id)
+            entity_registry.async_remove(old_media_player_entity_id)
+        
+        migrated_count += 1
     
+    # Save updated storage
     if migrated_count > 0:
-        _LOGGER.info("Migration completed: removed %d old Remote entities. Media Player entities will be created automatically.", migrated_count)
+        await storage.async_save()
+        _LOGGER.info("Migration completed: migrated %d devices from 'universal' to 'light' type. Light entities will be created automatically.", migrated_count)
     else:
-        _LOGGER.debug("Migration: no old Remote entities found")
+        _LOGGER.debug("Migration: no devices needed migration")
 
 
 async def _create_virtual_devices(hass: HomeAssistant, entry: ConfigEntry, storage: IRRemoteStorage) -> None:
@@ -686,14 +713,21 @@ async def _cleanup_device_entities(hass: HomeAssistant, controller_id: str, devi
             entity_registry.async_remove(entity_id)
             _LOGGER.debug("Removed command entity: %s", entity_id)
 
-    # Remove media player entity (было remote, теперь media_player для universal)
+    # Remove media player entity (для TV/Audio/Projector)
     media_player_unique_id = f"{DOMAIN}_{controller_id}_{device_id}_player"
     media_player_entity_id = entity_registry.async_get_entity_id("media_player", DOMAIN, media_player_unique_id)
     if media_player_entity_id:
         entity_registry.async_remove(media_player_entity_id)
         _LOGGER.debug("Removed media player entity: %s", media_player_entity_id)
     
-    # Remove climate entity if exists
+    # Remove light entity (для Light устройств)
+    light_unique_id = f"{DOMAIN}_{controller_id}_{device_id}_light"
+    light_entity_id = entity_registry.async_get_entity_id("light", DOMAIN, light_unique_id)
+    if light_entity_id:
+        entity_registry.async_remove(light_entity_id)
+        _LOGGER.debug("Removed light entity: %s", light_entity_id)
+    
+    # Remove climate entity if exists (для AC)
     climate_unique_id = f"{DOMAIN}_{controller_id}_{device_id}_climate"
     climate_entity_id = entity_registry.async_get_entity_id("climate", DOMAIN, climate_unique_id)
     if climate_entity_id:

@@ -223,8 +223,8 @@ class IRRemoteStorage:
         
         return success
     
-    async def async_add_device(self, controller_id: str, device_id: str, device_name: str, device_type: str = "universal") -> bool:
-        """Add virtual device to controller."""
+    async def async_add_device(self, controller_id: str, device_id: str, device_name: str, device_type: str = "light") -> bool:
+        """Add virtual device to controller. Default type is 'light'."""
         if not self._validate_name(device_name):
             _LOGGER.warning("Invalid device name: %s", device_name)
             return False
@@ -363,7 +363,7 @@ class IRRemoteStorage:
             devices.append({
                 "id": device_id,
                 "name": device_data.get("name", "Unknown Device"),
-                "type": device_data.get("type", "universal"),  # ДОБАВЛЕНО: возвращаем тип
+                "type": device_data.get("type", "light"),  # ИЗМЕНЕНО: дефолт light вместо universal
                 "command_count": len(device_data.get("commands", {}))
             })
         
@@ -383,7 +383,7 @@ class IRRemoteStorage:
         return {
             "id": device_id,
             "name": device_data.get("name", "Unknown Device"),
-            "type": device_data.get("type", "universal"),  # ДОБАВЛЕНО: возвращаем тип
+            "type": device_data.get("type", "light"),  # ИЗМЕНЕНО: дефолт light вместо universal
             "commands": device_data.get("commands", {})
         }
     
@@ -619,7 +619,7 @@ class IRRemoteStorage:
                 devices.append({
                     "id": device_id,
                     "name": device_data.get("name", "Unknown Device"),
-                    "type": device_data.get("type", "universal"),
+                    "type": device_data.get("type", "light"),  # ИЗМЕНЕНО: дефолт light вместо universal
                     "command_count": len(device_data.get("commands", {})),
                     "commands": list(device_data.get("commands", {}).keys())
                 })
