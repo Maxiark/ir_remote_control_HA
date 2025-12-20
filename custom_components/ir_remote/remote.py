@@ -163,6 +163,32 @@ class IRRemoteDevice(RemoteEntity):
         return self._attr_activity_list
     
     @property
+    def preset_modes(self) -> list[str]:
+        """Return list of available preset modes (commands) for Yandex Smart Home."""
+        # Refresh activity list to get latest commands
+        self._update_activity_list()
+        return self._attr_activity_list if self._attr_activity_list else []
+    
+    @property
+    def preset_mode(self) -> Optional[str]:
+        """Return current preset mode (last executed command) for Yandex Smart Home."""
+        return self._last_command
+    
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        """Set preset mode (execute command) for Yandex Smart Home."""
+        _LOGGER.info("Setting preset mode (executing command): %s for device %s", 
+                     preset_mode, self._device_name)
+        
+        # Check if command exists in activity list
+        if preset_mode not in self.preset_modes:
+            _LOGGER.warning("Preset mode %s not found in available commands for %s", 
+                          preset_mode, self._device_name)
+            return
+        
+        # Execute the command
+        await self.async_send_command([preset_mode])
+    
+    @property
     def available(self) -> bool:
         """Return if entity is available."""
         return True
@@ -255,4 +281,7 @@ class IRRemoteDevice(RemoteEntity):
             "last_command": self._last_command,
             "available_commands": len(self._attr_activity_list or []),
             "device_type": device_type,
+            # Явно добавляем preset mode атрибуты для УДЯ интеграции
+            "preset_modes": self.preset_modes,
+            "preset_mode": self.preset_mode,
         }
