@@ -147,10 +147,22 @@ class IRMediaPlayer(MediaPlayerEntity):
         _LOGGER.debug("Initialized media player: %s (%s)", device_name, device_type)
     
     def _update_source_list(self) -> None:
-        """Update source list from available commands."""
+        """Update source list from available commands.
+        
+        Excludes power commands (on/off) as they are handled by turn_on/turn_off methods.
+        """
         commands = self._storage.get_commands(self._controller_id, self._device_id)
-        self._attr_source_list = [command["id"] for command in commands]
-        _LOGGER.debug("Updated source list for %s: %s", self._device_name, self._attr_source_list)
+        
+        # Фильтруем команды питания - они не должны быть в источниках
+        all_power_commands = set(POWER_ON_COMMANDS + POWER_OFF_COMMANDS)
+        
+        self._attr_source_list = [
+            command["id"] for command in commands
+            if command["id"].lower() not in all_power_commands
+        ]
+        
+        _LOGGER.debug("Updated source list for %s: %s (filtered out power commands)", 
+                     self._device_name, self._attr_source_list)
     
     def _set_supported_features(self) -> None:
         """Set supported features based on device type."""
@@ -410,9 +422,16 @@ class IRMediaPlayer(MediaPlayerEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return extra state attributes."""
+        # Создаём словарь соответствия номеров источников их названиям
+        source_name_map = {}
+        if self._attr_source_list:
+            for idx, source in enumerate(self._attr_source_list, start=1):
+                source_name_map[f"Источник {idx}"] = source
+        
         return {
             "device_id": self._device_id,
             "controller_id": self._controller_id,
             "device_type": self._device_type,
             "available_commands": len(self._attr_source_list or []),
+            "source_name_map": source_name_map,  # Mapping для пользователя
         }
