@@ -79,18 +79,23 @@ DEVICE_TYPE_TV = "tv"
 DEVICE_TYPE_AUDIO = "audio"
 DEVICE_TYPE_PROJECTOR = "projector"
 DEVICE_TYPE_AC = "ac"
-DEVICE_TYPE_UNIVERSAL = "universal"
+DEVICE_TYPE_LIGHT = "light"  # НОВЫЙ ТИП! Свет/Гирлянда - дефолтный для Universal устройств
+
+# УДАЛЁН: DEVICE_TYPE_UNIVERSAL - заменён на DEVICE_TYPE_LIGHT
 
 DEVICE_TYPES = {
     DEVICE_TYPE_TV: "Телевизор",
     DEVICE_TYPE_AUDIO: "Аудиосистема", 
     DEVICE_TYPE_PROJECTOR: "Проектор",
     DEVICE_TYPE_AC: "Кондиционер",
-    DEVICE_TYPE_UNIVERSAL: "Универсальное устройство"
+    DEVICE_TYPE_LIGHT: "Свет/Гирлянда или универсальный",  # Подходит для любых устройств!
 }
 
-# Media player device types
+# Media player device types (без Light!)
 MEDIA_PLAYER_TYPES = [DEVICE_TYPE_TV, DEVICE_TYPE_AUDIO, DEVICE_TYPE_PROJECTOR]
+
+# Light device types
+LIGHT_TYPES = [DEVICE_TYPE_LIGHT]
 
 # Standard commands for device types
 STANDARD_COMMANDS = {
@@ -163,6 +168,12 @@ STANDARD_COMMANDS = {
         "swing": "Поворот",
         "swing_on": "Поворот вкл",
         "swing_off": "Поворот выкл"
+    },
+    DEVICE_TYPE_LIGHT: {
+        "on": "Включить",
+        "off": "Выключить",
+        "power": "Питание",
+        # Остальные команды определяются пользователем
     }
 }
 
@@ -214,6 +225,7 @@ ENTITY_COMMAND_BUTTON = "{device}_{command}"
 ENTITY_MEDIA_PLAYER = "{device}_player"
 ENTITY_CLIMATE = "{device}_climate"
 ENTITY_REMOTE_DEVICE = "{device}_remote"
+ENTITY_LIGHT = "{device}_light"
 
 # Device info
 MANUFACTURER = "IR Remote Integration"
@@ -222,6 +234,7 @@ MODEL_VIRTUAL_DEVICE = "Virtual IR Device"
 MODEL_MEDIA_PLAYER = "IR Media Player"
 MODEL_CLIMATE = "IR Climate"
 MODEL_REMOTE_DEVICE = "IR Remote"
+MODEL_LIGHT = "IR Light"
 
 # Validation constants
 MAX_NAME_LENGTH = 50
@@ -233,3 +246,4 @@ TRANSLATION_KEY_DEVICE_COMMAND = "device_command"
 TRANSLATION_KEY_MEDIA_PLAYER = "media_player"
 TRANSLATION_KEY_CLIMATE = "climate"
 TRANSLATION_KEY_REMOTE_DEVICE = "remote_device"
+TRANSLATION_KEY_LIGHT = "light"

@@ -30,15 +30,15 @@ from .const import (
     ACTION_ADD_DEVICE,
     ACTION_ADD_COMMAND,
     ACTION_COPY,
-    ACTION_REMOVE_DEVICE,                     
-    ACTION_REMOVE_COMMAND,                    
+    ACTION_REMOVE_DEVICE,
+    ACTION_REMOVE_COMMAND,
     STEP_SELECT_CONTROLLER_FOR_REMOVE_DEVICE, 
-    STEP_SELECT_DEVICE_FOR_REMOVE,            
-    STEP_CONFIRM_REMOVE_DEVICE,               
+    STEP_SELECT_DEVICE_FOR_REMOVE,
+    STEP_CONFIRM_REMOVE_DEVICE,
     STEP_SELECT_CONTROLLER_FOR_REMOVE_COMMAND,
-    STEP_SELECT_DEVICE_FOR_REMOVE_COMMAND,    
-    STEP_SELECT_COMMAND_FOR_REMOVE,           
-    STEP_CONFIRM_REMOVE_COMMAND,              
+    STEP_SELECT_DEVICE_FOR_REMOVE_COMMAND,
+    STEP_SELECT_COMMAND_FOR_REMOVE,
+    STEP_CONFIRM_REMOVE_COMMAND,
     ERROR_REMOVE_FAILED,
     STEP_INIT,
     STEP_ADD_CONTROLLER,
@@ -77,7 +77,8 @@ from .const import (
 
     DEFAULT_ENDPOINT_ID,
     DEFAULT_CLUSTER_ID,
-    DEVICE_TYPES,  
+    DEVICE_TYPES,
+    DEVICE_TYPE_LIGHT,  # ИЗМЕНЕНО: вместо DEVICE_TYPE_UNIVERSAL
 )
 
 from .data import IRRemoteStorage
@@ -503,10 +504,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     
                     if success:
-                        # Reload target controller entry
-                    #    self.hass.async_create_task(
-                    #        self._reload_entry_after_delay(target_controller_id)
-                    #    )
                         config_entry = self.hass.config_entries.async_get_entry(target_controller_id)
                         if config_entry:
                             self.hass.async_create_task(
@@ -534,10 +531,6 @@ class IRRemoteConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     
                     if success:
-                        # Reload target controller entry
-                    #    self.hass.async_create_task(
-                    #        self._reload_entry_after_delay(target_controller_id)
-                    #    )
                         config_entry = self.hass.config_entries.async_get_entry(target_controller_id)
                         if config_entry:
                             self.hass.async_create_task(
@@ -614,24 +607,6 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self.config_entry = config_entry
-    
-    async def async_step_init(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
-        """Manage the options."""
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-        
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema({
-                vol.Optional("dummy"): cv.string,  # Placeholder for future options
-            })
-        )
-
-class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for IR Remote."""
-    
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
         self.flow_data: Dict[str, Any] = {}
         self.storage: IRRemoteStorage = None
     
@@ -728,7 +703,7 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
         controller_name = "Unknown"
         if self.storage:
             try:
-                controller = self.storage.get_controller(self.flow_data[CONF_CONTROLLER_ID])
+                controller = self.storage.get_controller(controller_id)
                 if controller:
                     controller_name = controller["name"]
             except Exception:
@@ -781,10 +756,11 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
                     errors={"base": "add_device_failed"}
                 )
         
+        # ИЗМЕНЕНО: дефолтный тип теперь DEVICE_TYPE_LIGHT вместо первого в списке
         return self.async_show_form(
             step_id=STEP_SELECT_DEVICE_TYPE,
             data_schema=vol.Schema({
-                vol.Required(CONF_DEVICE_TYPE): vol.In(DEVICE_TYPES),
+                vol.Required(CONF_DEVICE_TYPE, default=DEVICE_TYPE_LIGHT): vol.In(DEVICE_TYPES),
             }),
             description_placeholders={
                 "device_name": self.flow_data.get(CONF_DEVICE_NAME, "Unknown")
@@ -1038,11 +1014,16 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
             for command in commands
         }
         
+        device = self.storage.get_device(controller_id, device_id)
+        
         return self.async_show_form(
             step_id="select_command_for_remove",
             data_schema=vol.Schema({
                 vol.Required("command_id"): vol.In(command_options)
-            })
+            }),
+            description_placeholders={
+                "device_name": device["name"] if device else "Неизвестное устройство"
+            }
         )
     
     async def async_step_confirm_remove_command(self, user_input: Dict[str, Any] | None = None) -> FlowResult:
@@ -1105,7 +1086,7 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
     
-    # Helper methods (copied from main config flow)
+    # Helper methods
     
     async def _reload_entry_after_delay(self, controller_id: str) -> None:
         """Reload entry after a short delay."""

@@ -65,11 +65,12 @@ async def async_setup_entry(
     for device in devices:
         device_id = device["id"]
         device_name = device["name"]
-        device_type = device.get("type", "universal")
+        device_type = device.get("type", "light")
         
         _LOGGER.info("Processing device: %s (%s) - type: %s", device_name, device_id, device_type)
         
-        # Only create media player for supported types
+        # Создаём Media Player только для специализированных типов (TV, Audio, Projector)
+        # Light устройства используют свою платформу!
         if device_type in MEDIA_PLAYER_TYPES:
             _LOGGER.debug("Creating media player for device: %s (%s)", device_name, device_type)
             
@@ -133,7 +134,6 @@ class IRMediaPlayer(MediaPlayerEntity):
         self._state = MediaPlayerState.IDLE
         self._volume_level = 0.5
         self._is_volume_muted = False
-        self._current_source = None
         
         # Set supported features based on device type
         self._set_supported_features()
@@ -142,10 +142,11 @@ class IRMediaPlayer(MediaPlayerEntity):
     
     def _set_supported_features(self) -> None:
         """Set supported features based on device type."""
+        # Базовые возможности для специализированных типов
         features = (
             MediaPlayerEntityFeature.TURN_ON |
             MediaPlayerEntityFeature.TURN_OFF |
-            MediaPlayerEntityFeature.VOLUME_STEP |  # Изменено: заменено VOLUME_UP и VOLUME_DOWN на VOLUME_STEP
+            MediaPlayerEntityFeature.VOLUME_STEP |
             MediaPlayerEntityFeature.VOLUME_MUTE
         )
         
@@ -190,11 +191,6 @@ class IRMediaPlayer(MediaPlayerEntity):
     def is_volume_muted(self) -> Optional[bool]:
         """Boolean if volume is currently muted."""
         return self._is_volume_muted
-    
-    @property
-    def source(self) -> Optional[str]:
-        """Name of the current input source."""
-        return self._current_source
     
     @property
     def available(self) -> bool:
