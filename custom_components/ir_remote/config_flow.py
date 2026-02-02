@@ -606,7 +606,7 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
     
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        #self.config_entry = config_entry #Not working in new version HA (2025+)
         self.flow_data: Dict[str, Any] = {}
         self.storage: IRRemoteStorage = None
     
