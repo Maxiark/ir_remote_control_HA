@@ -82,6 +82,7 @@ from .const import (
 )
 
 from .data import IRRemoteStorage
+from .zha_helpers import async_read_learned_ir_code, get_zha_devices as _list_zha_devices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -91,42 +92,9 @@ async def get_zha_devices(hass: HomeAssistant) -> Dict[str, str]:
     _LOGGER.debug("Getting ZHA devices for IR controllers")
     
     try:
-        # Use zha_toolkit service to get devices
-        result = await hass.services.async_call(
-            "zha_toolkit",
-            "zha_devices",
-            {},
-            blocking=True,
-            return_response=True
-        )
-        
-        if not result:
-            _LOGGER.error("No response from zha_toolkit")
-            return {}
-
-        devices = {}
-        for device in result.get("devices", []):
-            ieee = device.get("ieee")
-            if not ieee:
-                continue
-                
-            # Create display name
-            device_name = (
-                device.get("user_given_name") or 
-                device.get("model") or 
-                device.get("name", "Unknown Device")
-            )
-            
-            # Add manufacturer info if available
-            manufacturer = device.get("manufacturer", "")
-            if manufacturer:
-                display_name = f"{device_name} ({manufacturer}) - {ieee}"
-            else:
-                display_name = f"{device_name} - {ieee}"
-            
-            devices[ieee] = display_name
+        devices = _list_zha_devices(hass)
+        for display_name in devices.values():
             _LOGGER.debug("Found potential IR device: %s", display_name)
-
         return devices
 
     except Exception as e:
@@ -1131,27 +1099,9 @@ class IRRemoteOptionsFlowHandler(config_entries.OptionsFlow):
         await asyncio.sleep(10)
         
         try:
-            result = await self.hass.services.async_call(
-                "zha_toolkit",
-                "attr_read",
-                {
-                    "ieee": controller["ieee"],
-                    "endpoint": controller["endpoint_id"],
-                    "cluster": controller["cluster_id"],
-                    "attribute": 0,
-                    "use_cache": False
-                },
-                blocking=True,
-                return_response=True
+            ir_code = await async_read_learned_ir_code(
+                self.hass, controller["ieee"], controller["endpoint_id"], controller["cluster_id"]
             )
-            
-            ir_code = None
-            if result and "result_read" in result:
-                result_read = result["result_read"]
-                if isinstance(result_read, (list, tuple)) and len(result_read) > 0:
-                    attributes_dict = result_read[0]
-                    if isinstance(attributes_dict, dict) and 0 in attributes_dict:
-                        ir_code = attributes_dict[0]
             
             if ir_code:
                 success = await self.storage.async_add_command(

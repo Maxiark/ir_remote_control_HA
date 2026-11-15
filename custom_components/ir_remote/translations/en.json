@@ -89,7 +89,7 @@
         },
         "error": {
             "device_not_found": "Selected device not found in ZHA",
-            "zha_not_found": "ZHA integration not found or zha_toolkit unavailable",
+            "zha_not_found": "ZHA integration not found or not ready",
             "copy_failed": "Failed to perform copy operation",
             "no_source_data": "Source data not found",
             "same_target": "Cannot copy to the same location",

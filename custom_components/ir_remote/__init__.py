@@ -42,6 +42,7 @@ from .const import (
     DEVICE_TYPE_LIGHT,
 )
 from .data import IRRemoteStorage
+from .zha_helpers import async_read_learned_ir_code
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -263,36 +264,15 @@ async def _register_services(hass: HomeAssistant) -> None:
             # Wait for user to press the button on original remote
             await asyncio.sleep(10)
             
-            # Read the learned IR code from attribute 0
-            _LOGGER.debug("Reading learned IR code from attribute 0")
+            # Read the learned IR code directly from the ZHA quirk
+            _LOGGER.debug("Reading learned IR code from ZHA device")
             
-            result = await hass.services.async_call(
-                "zha_toolkit",
-                "attr_read",
-                {
-                    "ieee": controller["ieee"],
-                    "endpoint": controller["endpoint_id"],
-                    "cluster": controller["cluster_id"],
-                    "attribute": 0,
-                    "use_cache": False
-                },
-                blocking=True,
-                return_response=True
+            ir_code = await async_read_learned_ir_code(
+                hass, controller["ieee"], controller["endpoint_id"], controller["cluster_id"]
             )
             
-            _LOGGER.debug("ZHA toolkit response: %s", result)
-            
-            ir_code = None
-            if result and "result_read" in result:
-                # result_read is a tuple: (dict_with_attributes, dict_with_other_data)
-                result_read = result["result_read"]
-                if isinstance(result_read, (list, tuple)) and len(result_read) > 0:
-                    attributes_dict = result_read[0]
-                    if isinstance(attributes_dict, dict) and 0 in attributes_dict:
-                        ir_code = attributes_dict[0]
-                        _LOGGER.info("Successfully read IR code from attribute 0 (length: %d)", len(str(ir_code)))
-            
             if ir_code:
+                _LOGGER.info("Successfully read IR code (length: %d, preview: %.20s...)", len(ir_code), ir_code)
                 # Save the learned code
                 success = await storage.async_add_command(
                     controller_id, device_id, command_id, command_id, str(ir_code)
@@ -308,7 +288,7 @@ async def _register_services(hass: HomeAssistant) -> None:
                     _LOGGER.error("Failed to save learned command")
                     raise HomeAssistantError("Failed to save learned command")
             else:
-                _LOGGER.error("No IR code found in response. Full response: %s", result)
+                _LOGGER.error("No IR code received from device during learning")
                 raise HomeAssistantError("No IR code received during learning")
                 
         except Exception as e:

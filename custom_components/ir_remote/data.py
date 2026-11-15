@@ -20,6 +20,21 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def normalize_ir_code(ir_code: Any) -> str:
+    """Convert a raw IR code (bytes / Bytes / str) to a plain base64 string."""
+    if ir_code is None:
+        return ""
+    if isinstance(ir_code, (bytes, bytearray)):
+        code = bytes(ir_code).decode("ascii", errors="ignore")
+    else:
+        code = str(ir_code)
+    code = code.strip()
+    # Handle repr()-style strings like b'....' produced by str(bytes)
+    if len(code) >= 3 and code[0] in "bB" and code[1] in "'\"" and code[-1] == code[1]:
+        code = code[2:-1]
+    return code
+
+
 class IRRemoteStorage:
     """Class for managing IR Remote data through Storage API."""
     
@@ -278,7 +293,11 @@ class IRRemoteStorage:
         ir_code: str
     ) -> bool:
         """Add command to device."""
-        if not self._validate_name(command_name):
+        ir_code = normalize_ir_code(ir_code)
+        if len(ir_code) < 8:
+            _LOGGER.error("IR code looks invalid (%r) - learned code was not read from the device", ir_code)
+            return False
+        if not ir_code or not self._validate_name(command_name):
             _LOGGER.warning("Invalid command data: name=%s, code_len=%d", 
                           command_name, len(ir_code) if ir_code else 0)
             return False
@@ -398,7 +417,7 @@ class IRRemoteStorage:
             commands.append({
                 "id": command_id,
                 "name": command_data.get("name", "Unknown Command"),
-                "code": command_data.get("code", "")
+                "code": normalize_ir_code(command_data.get("code", ""))
             })
         
         return commands
@@ -410,7 +429,7 @@ class IRRemoteStorage:
             return None
         
         command = device.get("commands", {}).get(command_id)
-        return command.get("code") if command else None
+        return normalize_ir_code(command.get("code")) if command else None
     
     async def async_export_data(self) -> Dict[str, Any]:
         """Export all data."""
